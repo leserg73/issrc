@@ -88,7 +88,7 @@
 <body>
 
 <p>
-<b>Inno Setup version 6.3.1</b><br/>
+<b>Inno Setup version 6.3.2</b><br/>
 <b>Copyright &copy; 1997-2024 Jordan Russell. All rights reserved.</b><br/>
 <b>Portions Copyright &copy; 2000-2024 Martijn Laan. All rights reserved.</b><br/>
 <extlink href="https://jrsoftware.org/">Inno Setup home page</extlink>
@@ -3204,7 +3204,7 @@ Filename: "{win}\MYPROG.INI"; Section: "InstallSettings"; Key: "InstallPath"; St
   <td>Revert multiple selections into a single one or a single selection into an empty one.</td><td>Esc</td>
 </tr>
 <tr>
-  <td>Complete word.</td><td>Ctrl+Space or Ctrl+I or Alt+Right (the last only if the Delphi key map is not active)</td>
+  <td>Complete word.</td><td>Ctrl+Space or Ctrl+I or Alt+Right (the last only if the Delphi key map is not active; all only if there's only a single selection)</td>
 </tr>
 <tr>
   <td>Fillup complete word.</td><td>Tab or Enter or Space (for ISPP directives) or \ (for constants) or : (for constants and section parameters) or ] (for sections) or = (for section directives).</td>
