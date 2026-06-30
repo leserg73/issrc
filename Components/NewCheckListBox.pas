@@ -1788,21 +1788,57 @@ begin
 end;
 
 procedure TNewCheckListBox.KeyDown(var Key: Word; Shift: TShiftState);
+var
+  GoForward: Boolean;
+  NewIndex: Integer;
 begin
-  if (Key = VK_SPACE) and not (ssAlt in Shift) and (ItemIndex >= 0) and
-    (FCaptureIndex < 0) and CanFocusItem(ItemIndex) then
-    if FWantTabs then begin
-      if not FSpaceDown then begin
-        FCaptureIndex := ItemIndex;
-        FSpaceDown := True;
-        InvalidateCheck(ItemIndex);
-        if (FHotIndex <> ItemIndex) and (FHotIndex <> -1) and (FThemeData <> 0) then
-          InvalidateCheck(FHotIndex);
-      end;
-    end
-    else
-      Toggle(ItemIndex);
-  inherited;
+  if Key = VK_SPACE then
+  begin
+    if not (ssAlt in Shift) and (ItemIndex >= 0) and
+      (FCaptureIndex < 0) and CanFocusItem(ItemIndex) then
+    begin
+      if FWantTabs then
+      begin
+        if not FSpaceDown then
+        begin
+          FCaptureIndex := ItemIndex;
+          FSpaceDown := True;
+          InvalidateCheck(ItemIndex);
+          if (FHotIndex <> ItemIndex) and (FHotIndex <> -1) and (FThemeData <> 0) then
+            InvalidateCheck(FHotIndex);
+        end;
+      end
+      else
+        Toggle(ItemIndex);
+    end;
+    Key := 0;
+    Exit;
+  end;
+
+  case Key of
+    VK_UP: GoForward := False;
+    VK_DOWN: GoForward := True;
+    VK_LEFT: begin
+               GoForward := False;
+               if (ItemIndex >= 0) and (ItemStates[ItemIndex].Expanded) then
+                 CollapseItem(ItemIndex);
+             end;
+    VK_RIGHT: begin
+                GoForward := True;
+                if (ItemIndex >= 0) and (ItemStates[ItemIndex].HasChildren) and
+                  not (ItemStates[ItemIndex].Expanded) then
+                  ExpandItem(ItemIndex);
+              end;
+  else
+    inherited;
+    Exit;
+  end;
+
+  NewIndex := FindNextItem(ItemIndex, GoForward, False);
+  if NewIndex <> -1 then
+    ItemIndex := NewIndex;
+
+  Key := 0;
 end;
 
 procedure TNewCheckListBox.KeyUp(var Key: Word; Shift: TShiftState);
