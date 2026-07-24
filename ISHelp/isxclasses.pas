@@ -631,9 +631,12 @@ TNewCheckListBox = class(TCustomListBox)
   procedure CollapseItem(Index: Integer);
   procedure ExpandAll;
   procedure ExpandItem(Index: Integer);
+  procedure LoadBtnBmpFromFile(const FileName: String);
+  procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean);
   property Anchors: TAnchors; read write;
   property Checked[Index: Integer]: Boolean; read write;
   property State[Index: Integer]: TCheckBoxState; read;
+  property GlyphsTransparentColor: TColor; read write;
   property ItemCaption[Index: Integer]: String; read write;
   property ItemEnabled[Index: Integer]: Boolean; read write;
   property ItemFontColor[Index: Integer]: TColor; read write;
@@ -661,6 +664,7 @@ TNewCheckListBox = class(TCustomListBox)
   property UseStyledColor: Boolean; read write;
   property TreeViewStyle: Boolean; read write;
   property ShowRoot: Boolean; read write;
+  property UseCustomGlyphs: Boolean; read write;
   property OnExpandCollapse: TNotifyEvent; read write;
   property OnItemMouseMove: TItemMouseMoveEvent; read write;
   property OnMouseDown: TMouseEvent; read write;

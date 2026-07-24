@@ -109,6 +109,10 @@ procedure TNewCheckListBoxTreeViewStyle_W(Self: TNewCheckListBox; const T: Boole
 procedure TNewCheckListBoxTreeViewStyle_R(Self: TNewCheckListBox; var T: Boolean); begin T := Self.TreeViewStyle; end;
 procedure TNewCheckListBoxUseStyledColor_W(Self: TNewCheckListBox; const T: Boolean); begin Self.UseStyledColor := T; end;
 procedure TNewCheckListBoxUseStyledColor_R(Self: TNewCheckListBox; var T: Boolean); begin T := Self.UseStyledColor; end;
+procedure TNewCheckListBoxGlyphsTransparentColor_W(Self: TNewCheckListBox; const T: TColor); begin Self.GlyphsTransparentColor := T; end;
+procedure TNewCheckListBoxGlyphsTransparentColor_R(Self: TNewCheckListBox; var T: TColor); begin T := Self.GlyphsTransparentColor; end;
+procedure TNewCheckListBoxUseCustomGlyphs_W(Self: TNewCheckListBox; const T: Boolean); begin Self.UseCustomGlyphs := T; end;
+procedure TNewCheckListBoxUseCustomGlyphs_R(Self: TNewCheckListBox; var T: Boolean); begin T := Self.UseCustomGlyphs; end;
 procedure TNewCheckListBoxOnExpandCollapse_W(Self: TNewCheckListBox; const T: TNotifyEvent); begin Self.OnExpandCollapse := T; end;
 procedure TNewCheckListBoxOnExpandCollapse_R(Self: TNewCheckListBox; var T: TNotifyEvent); begin T := Self.OnExpandCollapse; end;
 procedure TNewCheckListBoxOnItemMouseMove_W(Self: TNewCheckListBox; const T: TItemMouseMoveEvent); begin Self.OnItemMouseMove := T; end;
@@ -129,6 +133,8 @@ begin
     RegisterMethod(@TNewCheckListBox.CollapseItem, 'CollapseItem');
     RegisterMethod(@TNewCheckListBox.ExpandAll, 'ExpandAll');
     RegisterMethod(@TNewCheckListBox.ExpandItem, 'ExpandItem');
+    RegisterMethod(@TNewCheckListBox.LoadBtnBmpFromFile, 'LoadBtnBmpFromFile');
+    RegisterMethod(@TNewCheckListBox.LoadBtnBmpFromResource, 'LoadBtnBmpFromResource');
     RegisterPropertyHelper(@TNewCheckListBoxChecked_R, @TNewCheckListBoxChecked_W, 'Checked');
     RegisterPropertyHelper(@TNewCheckListBoxState_R, nil, 'State');
     RegisterPropertyHelper(@TNewCheckListBoxItemCaption_R, @TNewCheckListBoxItemCaption_W, 'ItemCaption');
@@ -143,6 +149,8 @@ begin
     RegisterPropertyHelper(@TNewCheckListBoxShowRoot_R,@TNewCheckListBoxShowRoot_W,'ShowRoot');
     RegisterPropertyHelper(@TNewCheckListBoxTreeViewStyle_R,@TNewCheckListBoxTreeViewStyle_W,'TreeViewStyle');
     RegisterPropertyHelper(@TNewCheckListBoxUseStyledColor_R,@TNewCheckListBoxUseStyledColor_W,'UseStyledColor');
+    RegisterPropertyHelper(@TNewCheckListBoxUseCustomGlyphs_R,@TNewCheckListBoxUseCustomGlyphs_W,'UseCustomGlyphs');
+    RegisterPropertyHelper(@TNewCheckListBoxGlyphsTransparentColor_R,@TNewCheckListBoxGlyphsTransparentColor_W,'GlyphsTransparentColor');
     RegisterPropertyHelper(@TNewCheckListBoxOnExpandCollapse_R,@TNewCheckListBoxOnExpandCollapse_W,'OnExpandCollapse');
     RegisterPropertyHelper(@TNewCheckListBoxOnItemMouseMove_R,@TNewCheckListBoxOnItemMouseMove_W,'OnItemMouseMove');
   end;

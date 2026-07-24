@@ -18,12 +18,19 @@ interface
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
   {$IFDEF VCLSTYLES} Vcl.Themes, {$ELSE} Themes, {$ENDIF}
-  StdCtrls, NewUxTheme;
+  StdCtrls, NewUxTheme, Vcl.Imaging.pngimage;
 
 const
   WM_UPDATEUISTATE = $0128;
+  GLYPH_COUNT = 23;
 
 type
+  TGlyphDPIInfo = record
+    DPI: Integer;
+    Height: Integer;
+    Present: Boolean;
+  end;
+
   TItemType = (itGroup, itCheck, itRadio);
   TCheckBoxState2 = (cb2Normal, cb2Hot, cb2Pressed, cb2Disabled);
   TExpandButtonState = (ebsCollapsed, ebsExpanded);
@@ -88,6 +95,10 @@ type
     FOnExpandCollapse: TNotifyEvent;
     FOnItemMouseMove: TItemMouseMoveEvent;
     FLastMouseOverArea: TItemArea;
+    FGlyphsImage: TPNGImage;
+    FGlyphsTransparentColor: TColor;
+    FUseCustomGlyphs: Boolean;
+    FGlyphDPIInfo: array[0..4] of TGlyphDPIInfo;  // 100%, 125%, 150%, 175, 200%
     class constructor Create;
     class destructor Destroy;
     class var FComplexParentBackground: Boolean;
@@ -139,6 +150,11 @@ type
     function ShouldShowExpandButton(Index: Integer): Boolean;
     procedure UpdateStyleServices;
     procedure UpdateExpandButtonSize;
+    procedure SetCustomGlyphs(Value: Boolean);
+    procedure SetGlyphsTransparentColor(Value: TColor);
+    procedure DrawCustomGlyph(Canvas: TCanvas; const DestRect: TRect; ImageIndex: Integer; TransparentColor: TColor);
+    function GetGlyphRowForCurrentDPI: Integer;
+    procedure AnalyzeGlyphImage;
   protected
     procedure CreateParams(var Params: TCreateParams); override;
     procedure CreateWnd; override;
@@ -179,6 +195,7 @@ type
     procedure SetSubItemFontStyle(Index: Integer; const ASubItemFontStyle: TFontStyles);
     procedure SetUseStyledColor(Value: Boolean);
     property ItemStates[Index: Integer]: TItemState read GetItemState;
+    procedure DrawBackGround(ACanvas: TCanvas);
   public
     constructor Create(AOwner: TComponent); override;
     procedure CreateWindowHandle(const Params: TCreateParams); override;
@@ -205,6 +222,8 @@ type
     procedure CollapseItem(Index: Integer);
     procedure ExpandAll;
     procedure ExpandItem(Index: Integer);
+    procedure LoadBtnBmpFromFile(const FileName: String);
+    procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean);
     property Checked[Index: Integer]: Boolean read GetChecked write SetChecked;
     property DisableStyledButtons: Boolean read FDisableStyledButtons write FDisableStyledButtons;
     property ItemCaption[Index: Integer]: String read GetCaption write SetCaption;
@@ -266,6 +285,8 @@ type
     property ShowRoot: Boolean read FShowRoot write SetShowRoot default True;
     property OnExpandCollapse: TNotifyEvent read FOnExpandCollapse write FOnExpandCollapse;
     property OnItemMouseMove: TItemMouseMoveEvent read FOnItemMouseMove write FOnItemMouseMove;
+    property GlyphsTransparentColor: TColor read FGlyphsTransparentColor write SetGlyphsTransparentColor default clFuchsia;
+    property UseCustomGlyphs: Boolean read FUseCustomGlyphs write SetCustomGlyphs default False;
   end;
 
   TNewCheckListBoxStyleHook = class(TScrollingStyleHook)
@@ -502,6 +523,24 @@ begin
   FExpandButtonLineColor := clWindowText;
   FLastMouseOverIndex := -1;
   FLastMouseOverArea := iaOther;
+  FGlyphsImage := TPNGImage.Create;
+  FGlyphsTransparentColor := clFuchsia;
+  FUseCustomGlyphs := False;
+  FGlyphDPIInfo[0].DPI := 96;    // 100%
+  FGlyphDPIInfo[0].Height := 16;
+  FGlyphDPIInfo[0].Present := False;
+  FGlyphDPIInfo[1].DPI := 120;   // 125%
+  FGlyphDPIInfo[1].Height := 20;
+  FGlyphDPIInfo[1].Present := False;
+  FGlyphDPIInfo[2].DPI := 144;   // 150%
+  FGlyphDPIInfo[2].Height := 24;
+  FGlyphDPIInfo[2].Present := False;
+  FGlyphDPIInfo[3].DPI := 168;   // 175%
+  FGlyphDPIInfo[3].Height := 28;
+  FGlyphDPIInfo[3].Present := False;
+  FGlyphDPIInfo[4].DPI := 192;   // 200%
+  FGlyphDPIInfo[4].Height := 32;
+  FGlyphDPIInfo[4].Present := False;
 end;
 
 procedure TNewCheckListBox.CreateParams(var Params: TCreateParams);
@@ -555,6 +594,7 @@ end;
 
 destructor TNewCheckListBox.Destroy;
 begin
+  FGlyphsImage.Free;
   if Assigned(FAccObjectInstance) then begin
     { Detach from FAccObjectInstance if someone still has a reference to it }
     TAccObject(FAccObjectInstance).ControlDestroying;
@@ -1093,7 +1133,7 @@ var
 
   procedure InternalDrawExpandButton(Rect: TRect; State: TExpandButtonState; Index: Integer);
   var
-    CenterX, CenterY: Integer;
+    CenterX, CenterY, ImageIndex: Integer;
     OldPenColor, OldBrushColor: TColor;
     FDetailsPressed: TThemedElementDetails;
     FDetailsNormal: TThemedElementDetails;
@@ -1105,7 +1145,17 @@ var
     OldPenColor := Canvas.Pen.Color;
     OldBrushColor := Canvas.Brush.Color;
 
-    if LStyle <> nil then
+    if FUseCustomGlyphs and not FGlyphsImage.Empty then
+    begin
+      case State of
+        ebsExpanded: ImageIndex := 21;
+        ebsCollapsed: ImageIndex := 22;
+      else
+        ImageIndex := 21;
+      end;
+      DrawCustomGlyph(Canvas, Rect, ImageIndex, FGlyphsTransparentColor);
+    end
+    else if LStyle <> nil then
     begin
       Canvas.Brush.Style := bsClear;
       FDetailsPressed := LStyle.GetElementDetails(tcbCategoryGlyphOpened);
@@ -1150,6 +1200,8 @@ var
   PrevItemMiddle, NextItemMiddle: Integer;
   PrevRootIndex, NextRootIndex: Integer;
   PrevRect, NextRect: TRect;
+  AdjustedCheckRect: TRect;
+  ImageIndex, BaseIndex: Integer;
 begin
   IsItemVisible := (SendMessage(Handle, LB_GETITEMHEIGHT, Index, 0) > 1);
 
@@ -1355,7 +1407,44 @@ begin
         CheckRect := Bounds(Rect.Left - (FCheckWidth + FOffset),
                             Rect.Top + ((Rect.Bottom - Rect.Top - FCheckHeight) div 2),
                             FCheckWidth, FCheckHeight);
-      if (LStyle <> nil) and not FDisableStyledButtons then begin
+    if FUseCustomGlyphs and not FGlyphsImage.Empty then
+    begin
+        BaseIndex := 0;
+        case ItemState.ItemType of
+          itRadio:
+            case ItemState.State of
+              cbUnchecked: BaseIndex := 1;  // Radio Unchecked
+              cbChecked:   BaseIndex := 5;  // Radio Checked
+            else
+              BaseIndex := 1;
+            end;
+          itCheck:
+            case ItemState.State of
+              cbUnchecked: BaseIndex := 9;  // Checkbox Unchecked
+              cbChecked:   BaseIndex := 13; // Checkbox Checked
+              cbGrayed:    BaseIndex := 17; // Checkbox Mixed
+            end;
+        else
+          BaseIndex := 1;
+        end;
+
+        if ItemDisabled then
+          ImageIndex := BaseIndex + 3 // Disabled
+        else if FSpaceDown or (FLastMouseMoveIndex = Index) then
+          ImageIndex := BaseIndex + 2 // Pressed
+        else if (FCaptureIndex < 0) and (Index = FHotIndex) then
+          ImageIndex := BaseIndex + 1 // Hot
+        else
+          ImageIndex := BaseIndex + 0; // Normal
+
+        AdjustedCheckRect := CheckRect;
+
+        Inc(AdjustedCheckRect.Right, 2);
+        Inc(AdjustedCheckRect.Bottom, 1);
+
+        DrawCustomGlyph(Canvas, AdjustedCheckRect, ImageIndex, FGlyphsTransparentColor);
+    end
+    else if (LStyle <> nil) and not FDisableStyledButtons then begin
         var Detail: TThemedButton;
         if ItemState.State <> cbGrayed then begin
           if ItemState.ItemType = itCheck then begin
@@ -2846,6 +2935,211 @@ begin
     Invalidate;
     if Assigned(FOnExpandCollapse) then
       FOnExpandCollapse(Self);
+  end;
+end;
+
+procedure TNewCheckListBox.DrawBackGround(ACanvas: TCanvas);
+var
+  ClientRect: TRect;
+  BGBrushColor: TColor;
+begin
+  ClientRect := GetClientRect;
+
+  if (FStyleServices <> nil) and not FStyleServices.IsSystemStyle and (seClient in StyleElements) then
+    if FWantTabs then
+      if ParentColor then
+        BGBrushColor := FStyleServices.GetStyleColor(scWindow)
+      else
+        BGBrushColor := FStyleServices.GetStyleColor(scListBox)
+    else
+      BGBrushColor := FStyleServices.GetStyleColor(ColorStates[Enabled])
+  else
+    BGBrushColor := Self.Color;
+
+  with ACanvas do
+  begin
+    Brush.Color := BGBrushColor;
+    FillRect(ClientRect);
+  end;
+end;
+
+procedure TNewCheckListBox.AnalyzeGlyphImage;
+var
+  TotalHeight, I: Integer;
+begin
+  if FGlyphsImage.Empty then Exit;
+
+  FGlyphDPIInfo[0].Present := (FGlyphsImage.Width >= GLYPH_COUNT * FGlyphDPIInfo[0].Height) and 
+                               (FGlyphsImage.Height >= FGlyphDPIInfo[0].Height);
+
+  if not FGlyphDPIInfo[0].Present then Exit;
+
+  TotalHeight := FGlyphDPIInfo[0].Height;
+
+  for I := 1 to High(FGlyphDPIInfo) do
+  begin
+    FGlyphDPIInfo[I].Present := (FGlyphsImage.Height >= TotalHeight + FGlyphDPIInfo[I].Height) and
+                                 (FGlyphsImage.Width >= GLYPH_COUNT * FGlyphDPIInfo[I].Height);
+    if FGlyphDPIInfo[I].Present then
+      TotalHeight := TotalHeight + FGlyphDPIInfo[I].Height;
+  end;
+end;
+
+function TNewCheckListBox.GetGlyphRowForCurrentDPI: Integer;
+var
+  I: Integer;
+begin
+  Result := 0;
+
+  if not FGlyphDPIInfo[0].Present then Exit;
+
+  for I := 2 downto 0 do
+  begin
+    if FGlyphDPIInfo[I].Present and (CurrentPPI >= FGlyphDPIInfo[I].DPI) then
+    begin
+      Result := I;
+      Break;
+    end;
+  end;
+
+  if CurrentPPI < FGlyphDPIInfo[0].DPI then
+    Result := 0;
+end;
+
+procedure TNewCheckListBox.DrawCustomGlyph(Canvas: TCanvas; const DestRect: TRect;
+  ImageIndex: Integer; TransparentColor: TColor);
+var
+  BtnWidth, BtnHeight: Integer;
+  SrcRect: TRect;
+  TempBmp: TBitmap;
+  TempBmp2: TBitmap;
+  ScaleFactor: Double;
+  ScaledWidth, ScaledHeight: Integer;
+  RowIndex: Integer;
+  RowOffsetY: Integer;
+begin
+  if not FUseCustomGlyphs or FGlyphsImage.Empty then Exit;
+
+  if not FGlyphDPIInfo[0].Present then
+    AnalyzeGlyphImage;
+
+  RowIndex := GetGlyphRowForCurrentDPI;
+  BtnHeight := FGlyphDPIInfo[RowIndex].Height;
+  BtnWidth := BtnHeight;
+
+  RowOffsetY := 0;
+  for var I := 0 to RowIndex - 1 do
+    if FGlyphDPIInfo[I].Present then
+      RowOffsetY := RowOffsetY + FGlyphDPIInfo[I].Height;
+
+  ScaleFactor := CurrentPPI / FGlyphDPIInfo[RowIndex].DPI;
+
+  ScaledWidth := Integer(Round(BtnWidth * ScaleFactor));
+  ScaledHeight := Integer(Round(BtnHeight * ScaleFactor));
+
+  SrcRect.Left := ImageIndex * BtnWidth;
+  SrcRect.Top := RowOffsetY;
+  SrcRect.Right := (ImageIndex + 1) * BtnWidth;
+  SrcRect.Bottom := RowOffsetY + BtnHeight;
+
+  TempBmp := TBitmap.Create;
+  try
+    TempBmp.Width := DestRect.Width;
+    TempBmp.Height := DestRect.Height;
+    TempBmp.PixelFormat := pf32bit;
+
+    DrawBackGround(TempBmp.Canvas);
+
+    TempBmp2 := TBitmap.Create;
+    try
+      TempBmp2.Width := BtnWidth;
+      TempBmp2.Height := BtnHeight;
+      TempBmp2.PixelFormat := pf32bit;
+
+      if (FGlyphsImage is TPNGImage) or (FGlyphsImage.Transparent) then
+        DrawBackGround(TempBmp2.Canvas);
+
+      TempBmp2.Canvas.Draw(-SrcRect.Left, -SrcRect.Top, FGlyphsImage);
+      TempBmp2.Transparent := True;
+      TempBmp2.TransparentColor := TransparentColor;
+      TempBmp.Canvas.StretchDraw(Rect(0, 0, ScaledWidth, ScaledHeight), TempBmp2);
+    finally
+      TempBmp2.Free;
+    end;
+
+    var DestDrawRect: TRect;
+    DestDrawRect.Left := DestRect.Left;
+    DestDrawRect.Top := DestRect.Top;
+    DestDrawRect.Right := DestDrawRect.Left + ScaledWidth;
+    DestDrawRect.Bottom := DestDrawRect.Top + ScaledHeight;
+
+    Canvas.CopyRect(DestDrawRect, TempBmp.Canvas, Rect(0, 0, ScaledWidth, ScaledHeight));
+  finally
+    TempBmp.Free;
+  end;
+end;
+
+procedure TNewCheckListBox.LoadBtnBmpFromFile(const FileName: String);
+var
+  Picture: TPicture;
+begin
+  if FileExists(FileName) then
+  begin
+    Picture := TPicture.Create;
+    try
+      Picture.LoadFromFile(FileName);
+      FGlyphsImage.Assign(Picture.Graphic);
+      AnalyzeGlyphImage;
+      FUseCustomGlyphs := True;
+      if HandleAllocated then
+        RedrawWindow(Handle, nil, 0, RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW);
+    finally
+      Picture.Free;
+    end;
+  end;
+end;
+
+procedure TNewCheckListBox.LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean);
+var
+  TempBitmap: TBitmap;
+begin
+  TempBitmap := TBitmap.Create;
+  try
+    if IsBitmap then
+    begin
+      TempBitmap.LoadFromResourceName(HInstance, ResName);
+      FGlyphsImage.Assign(TempBitmap);
+    end else
+      FGlyphsImage.LoadFromResourceName(HInstance, ResName);
+    AnalyzeGlyphImage;
+    FUseCustomGlyphs := True;
+    if HandleAllocated then
+      RedrawWindow(Handle, nil, 0, RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW);
+  finally
+    TempBitmap.Free;
+  end;
+end;
+
+procedure TNewCheckListBox.SetCustomGlyphs(Value: Boolean);
+begin
+  if FUseCustomGlyphs <> Value then
+  begin
+    FUseCustomGlyphs := Value;
+    if HandleAllocated then
+      RedrawWindow(Handle, nil, 0, RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW);
+  end;
+end;
+
+procedure TNewCheckListBox.SetGlyphsTransparentColor(Value: TColor);
+begin
+  if FGlyphsTransparentColor <> Value then
+  begin
+    FGlyphsTransparentColor := Value;
+    if FUseCustomGlyphs then
+    begin
+      if HandleAllocated then
+        RedrawWindow(Handle, nil, 0, RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW);
+    end;
   end;
 end;
 

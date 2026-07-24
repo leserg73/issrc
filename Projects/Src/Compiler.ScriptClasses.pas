@@ -97,9 +97,12 @@ begin
     RegisterMethod('procedure CollapseItem(Index: Integer)');
     RegisterMethod('procedure ExpandAll');
     RegisterMethod('procedure ExpandItem(Index: Integer)');
+    RegisterMethod('procedure LoadBtnBmpFromFile(const FileName: String)');
+    RegisterMethod('procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean)');
     RegisterProperty('Anchors', 'TAnchors', iptrw);
     RegisterProperty('Checked', 'Boolean Integer', iptrw);
     RegisterProperty('State', 'TCheckBoxState Integer', iptr);
+    RegisterProperty('GlyphsTransparentColor', 'TColor', iptrw);
     RegisterProperty('ItemCaption', 'String Integer', iptrw);
     RegisterProperty('ItemEnabled', 'Boolean Integer', iptrw);
     RegisterProperty('ItemLevel', 'Byte Integer', iptr);
@@ -131,6 +134,7 @@ begin
     RegisterProperty('OnExit', 'TNotifyEvent', iptrw);
     RegisterProperty('TreeViewStyle', 'Boolean', iptrw);
     RegisterProperty('ShowRoot', 'Boolean', iptrw);
+    RegisterProperty('UseCustomGlyphs', 'Boolean', iptrw);
     RegisterProperty('OnExpandCollapse', 'TNotifyEvent', iptrw);
     RegisterProperty('OnItemMouseMove', 'TItemMouseMoveEvent', iptrw);
     RegisterProperty('OnMouseDown', 'TMouseEvent', iptrw);
