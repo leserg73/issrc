@@ -31,6 +31,8 @@ type
     Present: Boolean;
   end;
 
+  TWallpaperStyle = (wpsStretch, wpsFit);
+
   TItemType = (itGroup, itCheck, itRadio);
   TCheckBoxState2 = (cb2Normal, cb2Hot, cb2Pressed, cb2Disabled);
   TExpandButtonState = (ebsCollapsed, ebsExpanded);
@@ -101,6 +103,10 @@ type
     FUseCustomGlyphs: Boolean;
     FGlyphDPIInfo: array[0..4] of TGlyphDPIInfo;  // 100%, 125%, 150%, 175, 200%
     FSelectedItemAlpha: Byte;
+    FWallpapers: TPNGImage;
+    FWallpaperStyle: TWallpaperStyle;
+    FWallpaperBitmap: TBitmap;
+    FWallpaperBitmapValid: Boolean;
     FTransparentBgCache: TBitmap;
     FTransparentBgCacheValid: Boolean;
     class constructor Create;
@@ -161,6 +167,13 @@ type
     function GetGlyphRowForCurrentDPI: Integer;
     procedure AnalyzeGlyphImage;
     procedure SetSelectedItemAlpha(Value: Byte);
+    procedure SetWallpapers(Value: TPNGImage);
+    procedure SetWallpaperStyle(Value: TWallpaperStyle);
+    procedure WallpapersChanged(Sender: TObject);
+    function HasWallpaper: Boolean;
+    procedure InvalidateWallpaperBitmap;
+    procedure EnsureWallpaperBitmap;
+    function GetWallpaperRenderWidth: Integer;
     procedure UpdateTransparentBgCache;
   protected
     procedure CreateParams(var Params: TCreateParams); override;
@@ -203,7 +216,8 @@ type
     procedure SetTransparent(Value: Boolean);
     procedure SetUseStyledColor(Value: Boolean);
     property ItemStates[Index: Integer]: TItemState read GetItemState;
-    procedure DrawBackGround(ACanvas: TCanvas);
+    procedure DrawBackGround(ACanvas: TCanvas); overload;
+    procedure DrawBackGround(ACanvas: TCanvas; const AClientOrigin: TPoint); overload;
   public
     constructor Create(AOwner: TComponent); override;
     procedure CreateWindowHandle(const Params: TCreateParams); override;
@@ -232,6 +246,9 @@ type
     procedure ExpandItem(Index: Integer);
     procedure LoadBtnBmpFromFile(const FileName: String);
     procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean);
+    procedure LoadWallpaperFromFile(const FileName: string);
+    procedure LoadWallpaperFromResource(const ResName: String; IsBitmap: Boolean);
+    procedure ClearWallpaper;
     property Checked[Index: Integer]: Boolean read GetChecked write SetChecked;
     property DisableStyledButtons: Boolean read FDisableStyledButtons write FDisableStyledButtons;
     property ItemCaption[Index: Integer]: String read GetCaption write SetCaption;
@@ -297,6 +314,8 @@ type
     property UseCustomGlyphs: Boolean read FUseCustomGlyphs write SetCustomGlyphs default False;
     property Transparent: Boolean read FTransparent write SetTransparent default False;
     property SelectedItemAlpha: Byte read FSelectedItemAlpha write SetSelectedItemAlpha default 70;
+    property Wallpaper: TPNGImage read FWallpapers write SetWallpapers;
+    property WallpaperStyle: TWallpaperStyle read FWallpaperStyle write SetWallpaperStyle default wpsStretch;
   end;
 
   TNewCheckListBoxStyleHook = class(TScrollingStyleHook)
@@ -611,6 +630,10 @@ begin
   FGlyphDPIInfo[4].Present := False;
   FTransparent := False;
   FSelectedItemAlpha := 70;
+  FWallpapers := TPNGImage.Create;
+  FWallpapers.OnChange := WallpapersChanged;
+  FWallpaperStyle := wpsStretch;
+  FWallpaperBitmapValid := False;
   FTransparentBgCacheValid := False;
   FTransparentBgCache := TBitmap.Create;
 end;
@@ -632,6 +655,7 @@ begin
   finally
     Dec(FDisableItemStateDeletion);
   end;
+  InvalidateWallpaperBitmap;
   UpdateStyleServices;
   UpdateExpandButtonSize;
 end;
@@ -667,6 +691,8 @@ end;
 destructor TNewCheckListBox.Destroy;
 begin
   FGlyphsImage.Free;
+  FWallpapers.Free;
+  FWallpaperBitmap.Free;
   FTransparentBgCache.Free;
   if Assigned(FAccObjectInstance) then begin
     { Detach from FAccObjectInstance if someone still has a reference to it }
@@ -1349,7 +1375,7 @@ begin
   with Canvas do begin { From now on Handle refers to Canvas.Handle! }
     { Initialize colors }
     if not FWantTabs and (odSelected in State) and Focused then begin
-      if FTransparent then
+      if FTransparent or HasWallpaper then
       begin
         if ItemDisabled then
         begin
@@ -1638,7 +1664,15 @@ begin
         FillRect(Rect);
     end;
 
-    if TransparentIfStyled then begin
+    if HasWallpaper then begin
+      EnsureWallpaperBitmap;
+      if Assigned(FWallpaperBitmap) then
+        BitBlt(Handle, Rect.Left, Rect.Top, Rect.Width, Rect.Height,
+          FWallpaperBitmap.Canvas.Handle, Rect.Left, Rect.Top, SRCCOPY)
+      else
+        FillRect(Rect);
+    end
+    else if TransparentIfStyled then begin
       { Same method as TTrackBar.CNNotify uses }
       const Rgn = CreateRectRgn(Rect.Left, Rect.Top, Rect.Right, Rect.Bottom);
       SelectClipRgn(Handle, Rgn);
@@ -1649,7 +1683,7 @@ begin
     end else
       FillRect(Rect);
 
-    if FTransparent then
+    if FTransparent or HasWallpaper then
     begin
       if not FWantTabs and (odSelected in State) and Focused then
       begin
@@ -1995,6 +2029,7 @@ end;
 
 function TNewCheckListBox.GetTransparentIfStyled: Boolean;
 begin
+  InvalidateWallpaperBitmap;
   FTransparentBgCacheValid := False;
   Result := FTransparent or FWantTabs;
 end;
@@ -2005,7 +2040,7 @@ begin
     transparent and its parent background is complex (such as a bitmap),
     the item backgrounds need to be updated. Can be called even if it's
     not sure the list was actually scrolled. }
-  if FComplexParentBackground and TransparentIfStyled then begin
+  if HasWallpaper or (FComplexParentBackground and TransparentIfStyled) then begin
     var ScrollBarInfo: TScrollBarInfo;
     ScrollBarInfo.cbSize := SizeOf(ScrollBarInfo);
     if GetScrollBarInfo(Handle, Integer(OBJID_VSCROLL), ScrollBarInfo) and
@@ -2555,6 +2590,7 @@ procedure TNewCheckListBox.SetTransparent(Value: Boolean);
 begin
   if FTransparent <> Value then begin
     FTransparent := Value;
+    InvalidateWallpaperBitmap; 
     RedrawWindow(Handle, nil, 0, RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW);
   end;
 end;
@@ -2870,6 +2906,19 @@ procedure TNewCheckListBox.WMEraseBkgnd(var Message: TWMEraseBkgnd);
 var
   R: TRect;
 begin
+  if HasWallpaper then
+  begin
+    EnsureWallpaperBitmap;
+    if Assigned(FWallpaperBitmap) then
+    begin
+      R := ClientRect;
+      BitBlt(Message.DC, 0, 0, R.Width, R.Height,
+        FWallpaperBitmap.Canvas.Handle, 0, 0, SRCCOPY);
+      Message.Result := 1;
+      Exit;
+    end;
+  end;
+
   if FTransparent or FWantTabs then
   begin
     R := ClientRect;
@@ -2909,6 +2958,7 @@ var
 begin
   FTransparentBgCacheValid := False;
   inherited;
+  InvalidateWallpaperBitmap;
   { When the scroll bar appears/disappears, the client width changes and we
     must recalculate the height of the items }
   for I := Items.Count-1 downto 0 do
@@ -2953,6 +3003,7 @@ end;
 procedure TNewCheckListBox.WMDpiChanged(var Message: TMessage);
 begin
   inherited;
+  InvalidateWallpaperBitmap;
   UpdateExpandButtonSize;
   for var I := 0 to Items.Count - 1 do
     RemeasureItem(I);
@@ -3116,11 +3167,29 @@ begin
 end;
 
 procedure TNewCheckListBox.DrawBackGround(ACanvas: TCanvas);
+begin
+  DrawBackGround(ACanvas, Point(0, 0));
+end;
+
+procedure TNewCheckListBox.DrawBackGround(ACanvas: TCanvas; const AClientOrigin: TPoint);
 var
   ClientRect: TRect;
   BGBrushColor: TColor;
+  TargetRect: TRect;
 begin
   ClientRect := GetClientRect;
+
+  if HasWallpaper then
+  begin
+    EnsureWallpaperBitmap;
+    if Assigned(FWallpaperBitmap) then
+    begin
+      GetClipBox(ACanvas.Handle, TargetRect);
+      BitBlt(ACanvas.Handle, 0, 0, TargetRect.Width, TargetRect.Height,
+        FWallpaperBitmap.Canvas.Handle, AClientOrigin.X, AClientOrigin.Y, SRCCOPY);
+      Exit;
+    end;
+  end;
 
   if FTransparent or FWantTabs then
   begin
@@ -3237,7 +3306,7 @@ begin
     TempBmp.Height := DestRect.Height;
     TempBmp.PixelFormat := pf32bit;
 
-    DrawBackGround(TempBmp.Canvas);
+    DrawBackGround(TempBmp.Canvas, DestRect.TopLeft);
 
     TempBmp2 := TBitmap.Create;
     try
@@ -3341,6 +3410,222 @@ begin
   end;
 end;
 
+function TNewCheckListBox.HasWallpaper: Boolean;
+begin
+  Result := Assigned(FWallpapers) and not FWallpapers.Empty;
+end;
+
+procedure TNewCheckListBox.InvalidateWallpaperBitmap;
+begin
+  FWallpaperBitmapValid := False;
+end;
+
+procedure TNewCheckListBox.SetWallpapers(Value: TPNGImage);
+begin
+  { TGraphic.Assign copies the pixel data and preserves the OnChange handler
+    already hooked up in the constructor, which takes care of invalidating
+    the cached background and repainting. }
+  FWallpapers.Assign(Value);
+end;
+
+procedure TNewCheckListBox.SetWallpaperStyle(Value: TWallpaperStyle);
+begin
+  if FWallpaperStyle <> Value then
+  begin
+    FWallpaperStyle := Value;
+    WallpapersChanged(Self);
+  end;
+end;
+
+procedure TNewCheckListBox.WallpapersChanged(Sender: TObject);
+begin
+  InvalidateWallpaperBitmap;
+  if HandleAllocated then
+  begin
+    EnsureWallpaperBitmap;
+    RedrawWindow(Handle, nil, 0, RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW);
+  end;
+end;
+
+procedure TNewCheckListBox.LoadWallpaperFromFile(const FileName: string);
+begin
+  if not FileExists(FileName) then
+  begin
+    ClearWallpaper;
+    Exit;
+  end;
+
+  try
+    FWallpapers.LoadFromFile(FileName);
+    WallpapersChanged(Self);
+  except
+    ClearWallpaper;
+    raise;
+  end;
+end;
+
+procedure TNewCheckListBox.LoadWallpaperFromResource(const ResName: String; IsBitmap: Boolean);
+var
+  TempBitmap: TBitmap;
+  TempPng: TPNGImage;
+begin
+  if IsBitmap then
+  begin
+    TempBitmap := TBitmap.Create;
+    try
+      TempBitmap.LoadFromResourceName(HInstance, ResName);
+      FWallpapers.Assign(TempBitmap);
+    finally
+      TempBitmap.Free;
+    end;
+  end
+  else
+  begin
+    TempPng := TPNGImage.Create;
+    try
+      TempPng.LoadFromResourceName(HInstance, ResName);
+      FWallpapers.Assign(TempPng);
+    finally
+      TempPng.Free;
+    end;
+  end;
+
+  WallpapersChanged(Self);
+end;
+
+procedure TNewCheckListBox.ClearWallpaper;
+begin
+  FWallpapers.Assign(nil);
+  WallpapersChanged(Self);
+end;
+
+function TNewCheckListBox.GetWallpaperRenderWidth: Integer;
+{ The width available for the Wallpaper image itself, always reserving the
+  width a vertical scroll bar would take - whether or not one is actually
+  shown right now - so the image is never stretched/shrunk differently
+  depending on whether the scroll bar happens to be visible. }
+var
+  ScrollBarInfo: TScrollBarInfo;
+  ScrollBarVisible: Boolean;
+  ScrollBarWidth: Integer;
+begin
+  Result := ClientWidth;
+  if not HandleAllocated then
+    Exit;
+
+  ScrollBarInfo.cbSize := SizeOf(ScrollBarInfo);
+  ScrollBarVisible := GetScrollBarInfo(Handle, Integer(OBJID_VSCROLL), ScrollBarInfo) and
+    (ScrollBarInfo.rgstate[0] <> STATE_SYSTEM_INVISIBLE);
+
+  { When the scroll bar is visible, Windows has already shrunk ClientWidth
+    by its width for us. When it's hidden, we shrink it ourselves, so the
+    logical width used below is the same in both cases. }
+  if not ScrollBarVisible then
+  begin
+    ScrollBarWidth := GetSystemMetricsForDpi(SM_CXVSCROLL, UINT(CurrentPPI));
+    if ScrollBarWidth <= 0 then
+      ScrollBarWidth := GetSystemMetrics(SM_CXVSCROLL);
+    Result := Result - ScrollBarWidth;
+  end;
+
+  if Result < 0 then
+    Result := 0;
+end;
+
+procedure TNewCheckListBox.EnsureWallpaperBitmap;
+var
+  CR, ImageRect, DestRect: TRect;
+  RenderWidth, SrcW, SrcH, DestW, DestH: Integer;
+  ScaleFactor: Double;
+  BgColor: TColor;
+begin
+  if not HasWallpaper then
+  begin
+    FreeAndNil(FWallpaperBitmap);
+    FWallpaperBitmapValid := True;
+    Exit;
+  end;
+
+  if FWallpaperBitmapValid and Assigned(FWallpaperBitmap) then
+    Exit;
+
+  CR := GetClientRect;
+  if (CR.Width <= 0) or (CR.Height <= 0) then
+    Exit;
+
+  if not Assigned(FWallpaperBitmap) then
+    FWallpaperBitmap := TBitmap.Create;
+
+  FWallpaperBitmap.PixelFormat := pf32bit;
+  FWallpaperBitmap.SetSize(CR.Width, CR.Height);
+
+  if FTransparent or FWantTabs then
+  begin
+    if HandleAllocated then
+    begin
+      if FStyleServices <> nil then
+        FStyleServices.DrawParentBackground(Self.Handle, 
+          FWallpaperBitmap.Canvas.Handle, nil, False, CR)
+      else
+        PerformEraseBackground(Self, FWallpaperBitmap.Canvas.Handle);
+    end;
+  end
+  else
+  begin
+    if (FStyleServices <> nil) and not FStyleServices.IsSystemStyle and 
+       (seClient in StyleElements) then
+    begin
+      if FWantTabs then
+      begin
+        if ParentColor then
+          BgColor := FStyleServices.GetStyleColor(scWindow)
+        else
+          BgColor := FStyleServices.GetStyleColor(scListBox);
+      end
+      else
+        BgColor := FStyleServices.GetStyleColor(ColorStates[Enabled]);
+    end
+    else
+      BgColor := Self.Color;
+
+    FWallpaperBitmap.Canvas.Brush.Style := bsSolid;
+    FWallpaperBitmap.Canvas.Brush.Color := BgColor;
+    FWallpaperBitmap.Canvas.FillRect(CR);
+  end;
+
+  RenderWidth := GetWallpaperRenderWidth;
+  if RenderWidth <= 0 then
+  begin
+    FWallpaperBitmapValid := True;
+    Exit;
+  end;
+
+  ImageRect := Rect(0, 0, RenderWidth, CR.Height);
+  SrcW := FWallpapers.Width;
+  SrcH := FWallpapers.Height;
+
+  if (SrcW > 0) and (SrcH > 0) then
+  begin
+    case FWallpaperStyle of
+      wpsStretch:
+        FWallpaperBitmap.Canvas.StretchDraw(ImageRect, FWallpapers);
+
+      wpsFit:
+        begin
+          ScaleFactor := Min(ImageRect.Width / SrcW, ImageRect.Height / SrcH);
+          DestW := Integer(Round(SrcW * ScaleFactor));
+          DestH := Integer(Round(SrcH * ScaleFactor));
+          DestRect := Rect(0, 0, DestW, DestH);
+          OffsetRect(DestRect, (ImageRect.Width - DestW) div 2, 
+                    (ImageRect.Height - DestH) div 2);
+          FWallpaperBitmap.Canvas.StretchDraw(DestRect, FWallpapers);
+        end;
+    end;
+  end;
+
+  FWallpaperBitmapValid := True;
+end;
+
 procedure TNewCheckListBox.UpdateTransparentBgCache;
 var
   CR: TRect;
@@ -3423,6 +3708,18 @@ end;
 
 procedure TNewCheckListBoxStyleHook.PaintBackground(Canvas: TCanvas);
 begin
+  if (Control is TNewCheckListBox) and TNewCheckListBox(Control).HasWallpaper then
+  begin
+    TNewCheckListBox(Control).EnsureWallpaperBitmap;
+    if Assigned(TNewCheckListBox(Control).FWallpaperBitmap) then
+    begin
+      const CR = Control.ClientRect;
+      BitBlt(Canvas.Handle, 0, 0, CR.Width, CR.Height,
+        TNewCheckListBox(Control).FWallpaperBitmap.Canvas.Handle, 0, 0, SRCCOPY);
+      Exit;
+    end;
+  end;
+
   const Transparent = (Control is TNewCheckListBox) and TNewCheckListBox(Control).TransparentIfStyled;
   if Transparent then
     StyleServices.DrawParentBackground(Handle, Canvas.Handle, nil, False)

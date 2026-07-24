@@ -117,6 +117,10 @@ procedure TNewCheckListBoxUseCustomGlyphs_W(Self: TNewCheckListBox; const T: Boo
 procedure TNewCheckListBoxUseCustomGlyphs_R(Self: TNewCheckListBox; var T: Boolean); begin T := Self.UseCustomGlyphs; end;
 procedure TNewCheckListBoxTransparent_W(Self: TNewCheckListBox; const T: Boolean); begin Self.Transparent := T; end;
 procedure TNewCheckListBoxTransparent_R(Self: TNewCheckListBox; var T: Boolean); begin T := Self.Transparent; end;
+procedure TNewCheckListBoxWallpaper_W(Self: TNewCheckListBox; const T: TPNGImage); begin Self.Wallpaper := T; end;
+procedure TNewCheckListBoxWallpaper_R(Self: TNewCheckListBox; var T: TPNGImage); begin T := Self.Wallpaper; end;
+procedure TNewCheckListBoxWallpaperStyle_W(Self: TNewCheckListBox; const T: TWallpaperStyle); begin Self.WallpaperStyle := T; end;
+procedure TNewCheckListBoxWallpaperStyle_R(Self: TNewCheckListBox; var T: TWallpaperStyle); begin T := Self.WallpaperStyle; end;
 procedure TNewCheckListBoxOnExpandCollapse_W(Self: TNewCheckListBox; const T: TNotifyEvent); begin Self.OnExpandCollapse := T; end;
 procedure TNewCheckListBoxOnExpandCollapse_R(Self: TNewCheckListBox; var T: TNotifyEvent); begin T := Self.OnExpandCollapse; end;
 procedure TNewCheckListBoxOnItemMouseMove_W(Self: TNewCheckListBox; const T: TItemMouseMoveEvent); begin Self.OnItemMouseMove := T; end;
@@ -139,6 +143,9 @@ begin
     RegisterMethod(@TNewCheckListBox.ExpandItem, 'ExpandItem');
     RegisterMethod(@TNewCheckListBox.LoadBtnBmpFromFile, 'LoadBtnBmpFromFile');
     RegisterMethod(@TNewCheckListBox.LoadBtnBmpFromResource, 'LoadBtnBmpFromResource');
+    RegisterMethod(@TNewCheckListBox.LoadWallpaperFromFile, 'LoadWallpaperFromFile');
+    RegisterMethod(@TNewCheckListBox.LoadWallpaperFromResource, 'LoadWallpaperFromResource');
+    RegisterMethod(@TNewCheckListBox.ClearWallpaper, 'ClearWallpaper');
     RegisterPropertyHelper(@TNewCheckListBoxChecked_R, @TNewCheckListBoxChecked_W, 'Checked');
     RegisterPropertyHelper(@TNewCheckListBoxState_R, nil, 'State');
     RegisterPropertyHelper(@TNewCheckListBoxItemCaption_R, @TNewCheckListBoxItemCaption_W, 'ItemCaption');
@@ -157,6 +164,8 @@ begin
     RegisterPropertyHelper(@TNewCheckListBoxUseCustomGlyphs_R,@TNewCheckListBoxUseCustomGlyphs_W,'UseCustomGlyphs');
     RegisterPropertyHelper(@TNewCheckListBoxGlyphsTransparentColor_R,@TNewCheckListBoxGlyphsTransparentColor_W,'GlyphsTransparentColor');
     RegisterPropertyHelper(@TNewCheckListBoxTransparent_R,@TNewCheckListBoxTransparent_W,'Transparent');
+    RegisterPropertyHelper(@TNewCheckListBoxWallpaper_R,@TNewCheckListBoxWallpaper_W,'Wallpaper');
+    RegisterPropertyHelper(@TNewCheckListBoxWallpaperStyle_R,@TNewCheckListBoxWallpaperStyle_W,'WallpaperStyle');
     RegisterPropertyHelper(@TNewCheckListBoxOnExpandCollapse_R,@TNewCheckListBoxOnExpandCollapse_W,'OnExpandCollapse');
     RegisterPropertyHelper(@TNewCheckListBoxOnItemMouseMove_R,@TNewCheckListBoxOnItemMouseMove_W,'OnItemMouseMove');
   end;

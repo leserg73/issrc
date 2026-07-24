@@ -619,6 +619,8 @@ TItemArea = (iaOther, iaButton, iaCheckmark, iaItem, iaSubItem);
 
 TItemMouseMoveEvent = procedure(Sender: TObject; X, Y: Integer; Index: Integer; Area: TItemArea);
 
+TWallpaperStyle = (wpsStretch, wpsFit);
+
 TNewCheckListBox = class(TCustomListBox)
   function AddCheckBox(const ACaption, ASubItem: String; ALevel: Byte; AChecked, AEnabled, AHasInternalChildren, ACheckWhenParentChecked: Boolean; AObject: TObject): Integer;
   function AddCheckBoxEx(const ACaption, ASubItem: String; ALevel: Byte; AChecked, AEnabled, AHasInternalChildren, ACheckWhenParentChecked: Boolean; AExpanded: Boolean; AObject: TObject): Integer;
@@ -633,6 +635,9 @@ TNewCheckListBox = class(TCustomListBox)
   procedure ExpandItem(Index: Integer);
   procedure LoadBtnBmpFromFile(const FileName: String);
   procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean);
+  procedure LoadWallpaperFromFile(const FileName: String);
+  procedure LoadWallpaperFromResource(const ResName: String; IsBitmap: Boolean)
+  procedure ClearWallpaper;
   property Anchors: TAnchors; read write;
   property Checked[Index: Integer]: Boolean; read write;
   property State[Index: Integer]: TCheckBoxState; read;
@@ -667,6 +672,8 @@ TNewCheckListBox = class(TCustomListBox)
   property UseCustomGlyphs: Boolean; read write;
   property SelectedItemAlpha: Byte; read write;
   property Transparent: Boolean; read write;
+  property Wallpaper: TPicture; read write;
+  property WallpaperStyle: TWallpaperStyle; read write;
   property OnExpandCollapse: TNotifyEvent; read write;
   property OnItemMouseMove: TItemMouseMoveEvent; read write;
   property OnMouseDown: TMouseEvent; read write;

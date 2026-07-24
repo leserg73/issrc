@@ -81,6 +81,7 @@ end;
 
 procedure RegisterNewCheckListBox_C(Cl: TPSPascalCompiler);
 begin
+  Cl.AddTypeS('TWallpaperStyle', '(wpsStretch, wpsFit)');
   Cl.AddTypeS('TCheckItemOperation', '(coUncheck, coCheck, coCheckWithChildren)');
   Cl.AddTypeS('TItemArea', '(iaOther, iaButton, iaCheckmark, iaItem, iaSubItem)');
   Cl.AddTypeS('TItemMouseMoveEvent', 'procedure(Sender: TObject; X, Y: Integer; Index: Integer; Area: TItemArea)');
@@ -99,6 +100,9 @@ begin
     RegisterMethod('procedure ExpandItem(Index: Integer)');
     RegisterMethod('procedure LoadBtnBmpFromFile(const FileName: String)');
     RegisterMethod('procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean)');
+    RegisterMethod('procedure LoadWallpaperFromFile(const FileName: string)');
+    RegisterMethod('procedure LoadWallpaperFromResource(const ResName: String; IsBitmap: Boolean)');
+    RegisterMethod('procedure ClearWallpaper');
     RegisterProperty('Anchors', 'TAnchors', iptrw);
     RegisterProperty('Checked', 'Boolean Integer', iptrw);
     RegisterProperty('State', 'TCheckBoxState Integer', iptr);
@@ -137,6 +141,8 @@ begin
     RegisterProperty('UseCustomGlyphs', 'Boolean', iptrw);
     RegisterProperty('Transparent', 'Boolean', iptrw);
     RegisterProperty('SelectedItemAlpha', 'Byte', iptrw);
+    RegisterProperty('Wallpaper', 'TPNGImage', iptrw);
+    RegisterProperty('WallpaperStyle', 'TWallpaperStyle', iptrw);
     RegisterProperty('OnExpandCollapse', 'TNotifyEvent', iptrw);
     RegisterProperty('OnItemMouseMove', 'TItemMouseMoveEvent', iptrw);
     RegisterProperty('OnMouseDown', 'TMouseEvent', iptrw);
