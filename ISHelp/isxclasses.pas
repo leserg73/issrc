@@ -665,6 +665,8 @@ TNewCheckListBox = class(TCustomListBox)
   property TreeViewStyle: Boolean; read write;
   property ShowRoot: Boolean; read write;
   property UseCustomGlyphs: Boolean; read write;
+  property SelectedItemAlpha: Byte; read write;
+  property Transparent: Boolean; read write;
   property OnExpandCollapse: TNotifyEvent; read write;
   property OnItemMouseMove: TItemMouseMoveEvent; read write;
   property OnMouseDown: TMouseEvent; read write;

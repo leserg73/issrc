@@ -135,6 +135,8 @@ begin
     RegisterProperty('TreeViewStyle', 'Boolean', iptrw);
     RegisterProperty('ShowRoot', 'Boolean', iptrw);
     RegisterProperty('UseCustomGlyphs', 'Boolean', iptrw);
+    RegisterProperty('Transparent', 'Boolean', iptrw);
+    RegisterProperty('SelectedItemAlpha', 'Byte', iptrw);
     RegisterProperty('OnExpandCollapse', 'TNotifyEvent', iptrw);
     RegisterProperty('OnItemMouseMove', 'TItemMouseMoveEvent', iptrw);
     RegisterProperty('OnMouseDown', 'TMouseEvent', iptrw);

@@ -78,6 +78,7 @@ type
     FShowLines: Boolean;
     FStateList: TList;
     FWantTabs: Boolean;
+    FTransparent: Boolean;
     FThemeData: HTHEME;
     FThreadsUpToDate: Boolean;
     FHotIndex: Integer;
@@ -99,6 +100,9 @@ type
     FGlyphsTransparentColor: TColor;
     FUseCustomGlyphs: Boolean;
     FGlyphDPIInfo: array[0..4] of TGlyphDPIInfo;  // 100%, 125%, 150%, 175, 200%
+    FSelectedItemAlpha: Byte;
+    FTransparentBgCache: TBitmap;
+    FTransparentBgCacheValid: Boolean;
     class constructor Create;
     class destructor Destroy;
     class var FComplexParentBackground: Boolean;
@@ -130,6 +134,7 @@ type
     procedure UpdateScrollRange;
     procedure LBDeleteString(var Message: TMessage); message LB_DELETESTRING;
     procedure LBResetContent(var Message: TMessage); message LB_RESETCONTENT;
+    procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
     procedure WMGetDlgCode(var Message: TWMGetDlgCode); message WM_GETDLGCODE;
     procedure WMGetObject(var Message: TMessage); message WM_GETOBJECT;
     procedure WMKeyDown(var Message: TWMKeyDown); message WM_KEYDOWN;
@@ -155,6 +160,8 @@ type
     procedure DrawCustomGlyph(Canvas: TCanvas; const DestRect: TRect; ImageIndex: Integer; TransparentColor: TColor);
     function GetGlyphRowForCurrentDPI: Integer;
     procedure AnalyzeGlyphImage;
+    procedure SetSelectedItemAlpha(Value: Byte);
+    procedure UpdateTransparentBgCache;
   protected
     procedure CreateParams(var Params: TCreateParams); override;
     procedure CreateWnd; override;
@@ -193,6 +200,7 @@ type
     procedure SetSubItem(Index: Integer; const ASubItem: String);
     procedure SetSubItemFontColor(Index: Integer; const ASubItemFontColor: TColor);
     procedure SetSubItemFontStyle(Index: Integer; const ASubItemFontStyle: TFontStyles);
+    procedure SetTransparent(Value: Boolean);
     procedure SetUseStyledColor(Value: Boolean);
     property ItemStates[Index: Integer]: TItemState read GetItemState;
     procedure DrawBackGround(ACanvas: TCanvas);
@@ -287,6 +295,8 @@ type
     property OnItemMouseMove: TItemMouseMoveEvent read FOnItemMouseMove write FOnItemMouseMove;
     property GlyphsTransparentColor: TColor read FGlyphsTransparentColor write SetGlyphsTransparentColor default clFuchsia;
     property UseCustomGlyphs: Boolean read FUseCustomGlyphs write SetCustomGlyphs default False;
+    property Transparent: Boolean read FTransparent write SetTransparent default False;
+    property SelectedItemAlpha: Byte read FSelectedItemAlpha write SetSelectedItemAlpha default 70;
   end;
 
   TNewCheckListBoxStyleHook = class(TScrollingStyleHook)
@@ -485,6 +495,64 @@ end;
 
 { TNewCheckListBox }
 
+procedure FillRectWithAlpha(ACanvas: TCanvas; ARect: TRect; AAlpha: Byte);
+var
+  Bitmap: TBitmap;
+  BlendFunction: TBlendFunction;
+  Width, Height: Integer;
+  TempRect: TRect;
+  RowPtr: PByte;
+  x, y: Integer;
+begin
+  if (ARect.Width <= 0) or (ARect.Height <= 0) then
+    Exit;
+
+  Bitmap := TBitmap.Create;
+  try
+    Width := ARect.Width;
+    Height := ARect.Height;
+
+    Bitmap.PixelFormat := pf32bit;
+    Bitmap.SetSize(Width, Height);
+
+    Bitmap.Canvas.Brush.Color := ACanvas.Brush.Color;
+    Bitmap.Canvas.Brush.Style := bsSolid;
+    TempRect := Rect(0, 0, Width, Height);
+    Bitmap.Canvas.FillRect(TempRect);
+
+    for y := 0 to Height - 1 do
+    begin
+      RowPtr := Bitmap.ScanLine[y];
+      for x := 0 to Width - 1 do
+      begin
+        RowPtr[3] := 255;
+        Inc(RowPtr, 4);
+      end;
+    end;
+
+    BlendFunction.BlendOp := AC_SRC_OVER;
+    BlendFunction.BlendFlags := 0;
+    BlendFunction.SourceConstantAlpha := AAlpha;
+    BlendFunction.AlphaFormat := AC_SRC_ALPHA;
+
+    Windows.AlphaBlend(
+      ACanvas.Handle,
+      ARect.Left,
+      ARect.Top,
+      Width,
+      Height,
+      Bitmap.Canvas.Handle,
+      0,
+      0,
+      Width,
+      Height,
+      BlendFunction
+    );
+  finally
+    Bitmap.Free;
+  end;
+end;
+
 class constructor TNewCheckListBox.Create;
 begin
   TCustomStyleEngine.RegisterStyleHook(TNewCheckListBox, TNewCheckListBoxStyleHook);
@@ -541,6 +609,10 @@ begin
   FGlyphDPIInfo[4].DPI := 192;   // 200%
   FGlyphDPIInfo[4].Height := 32;
   FGlyphDPIInfo[4].Present := False;
+  FTransparent := False;
+  FSelectedItemAlpha := 70;
+  FTransparentBgCacheValid := False;
+  FTransparentBgCache := TBitmap.Create;
 end;
 
 procedure TNewCheckListBox.CreateParams(var Params: TCreateParams);
@@ -595,6 +667,7 @@ end;
 destructor TNewCheckListBox.Destroy;
 begin
   FGlyphsImage.Free;
+  FTransparentBgCache.Free;
   if Assigned(FAccObjectInstance) then begin
     { Detach from FAccObjectInstance if someone still has a reference to it }
     TAccObject(FAccObjectInstance).ControlDestroying;
@@ -1203,6 +1276,9 @@ var
   AdjustedCheckRect: TRect;
   ImageIndex, BaseIndex: Integer;
 begin
+  if not RectIntersect(Rect, GetClientRect) then
+    Exit;
+
   IsItemVisible := (SendMessage(Handle, LB_GETITEMHEIGHT, Index, 0) > 1);
 
   if not IsItemVisible then
@@ -1227,35 +1303,33 @@ begin
       Dec(ParentIndex);
     end;
 
-    if AnyParentCollapsed then
+    if AnyParentCollapsed and FShowLines then
     begin
-      if FShowLines and not FThreadsUpToDate then begin
+      if not FThreadsUpToDate then 
+      begin
         UpdateThreads;
         FThreadsUpToDate := True;
       end;
 
-      if FShowLines then begin
-        SavedClientRect := ClientRect;
-        FlipRect(Rect, SavedClientRect, IsRightToLeft);
+      SavedClientRect := ClientRect;
+      FlipRect(Rect, SavedClientRect, IsRightToLeft);
 
-        Canvas.Pen.Color := clGrayText;
-        ThreadLevel := ItemLevel[Index];
+      Canvas.Pen.Color := clGrayText;
+      ThreadLevel := ItemLevel[Index];
 
-        for I := 0 to ThreadLevel - 1 do
-          if (I in ItemStates[Index].ThreadCache) and (I < ItemStates[GroupParentIndex].Level) and ((Index mod 2) = 0) then
-          begin
-            ThreadPosX := (FCheckWidth + 2 * FOffset) * I + FCheckWidth div 2 + FOffset;
-            if FTreeViewStyle and FShowRoot then
-              Inc(ThreadPosX, 2 * FOffset + FExpandButtonSize + 2);
-            Canvas.Pixels[FlipX(ThreadPosX), Rect.Top + (Rect.Height div 2)] := clGrayText;
-          end;
-      end;
+      for I := 0 to ThreadLevel - 1 do
+        if (I in ItemStates[Index].ThreadCache) and 
+           (I < ItemStates[GroupParentIndex].Level) and 
+           ((Index mod 2) = 0) then
+        begin
+          ThreadPosX := (FCheckWidth + 2 * FOffset) * I + FCheckWidth div 2 + FOffset;
+          if FTreeViewStyle and FShowRoot then
+            Inc(ThreadPosX, 2 * FOffset + FExpandButtonSize + 2);
+          Canvas.Pixels[FlipX(ThreadPosX), Rect.Top + (Rect.Height div 2)] := clGrayText;
+        end;
     end;
     Exit;
   end;
-
-  if not RectIntersect(Rect, GetClientRect) then
-    Exit;
 
   if FShowLines and not FThreadsUpToDate then begin
     UpdateThreads;
@@ -1275,16 +1349,58 @@ begin
   with Canvas do begin { From now on Handle refers to Canvas.Handle! }
     { Initialize colors }
     if not FWantTabs and (odSelected in State) and Focused then begin
-      NewTextColor := clHighlightText;
-      NewSubItemTextColor := clHighlightText;
-      if (LStyle <> nil) and (seClient in StyleElements) then begin
-        Brush.Color := LStyle.GetSystemColor(clHighlight);
-        if seFont in StyleElements then begin
-          NewTextColor := LStyle.GetStyleFontColor(sfListItemTextSelected);
-          NewSubItemTextColor := NewTextColor;
+      if FTransparent then
+      begin
+        if ItemDisabled then
+        begin
+          NewTextColor := clGrayText;
+          NewSubItemTextColor := clGrayText;
+        end
+        else
+        begin
+          NewTextColor := Self.Font.Color;
+          NewSubItemTextColor := Self.Font.Color;
         end;
-      end else
-        Brush.Color := clHighlight;
+
+        if (LStyle <> nil) and (seFont in StyleElements) then
+        begin
+          NewTextColor := LStyle.GetStyleFontColor(ListItemFontColorStates[not ItemDisabled]);
+          NewSubItemTextColor := NewTextColor;
+          const Details = LStyle.GetElementDetails(CheckListItemStates[not ItemDisabled]);
+          var LColor: TColor;
+          if LStyle.GetElementColor(Details, ecTextColor, LColor) and (LColor <> clNone) then
+          begin
+            NewTextColor := LColor;
+            NewSubItemTextColor := LColor;
+          end;
+        end;
+
+        if not ItemDisabled and not FUseStyledColor then
+        begin
+          if ItemState.ItemFontColor <> 0 then
+            NewTextColor := ItemState.ItemFontColor;
+          if ItemState.SubItemFontColor <> 0 then
+            NewSubItemTextColor := ItemState.SubItemFontColor;
+        end;
+
+        if (LStyle <> nil) and (seClient in StyleElements) then
+          Brush.Color := LStyle.GetSystemColor(clHighlight)
+        else
+          Brush.Color := clHighlight;
+      end
+      else
+      begin
+        NewTextColor := clHighlightText;
+        NewSubItemTextColor := clHighlightText;
+        if (LStyle <> nil) and (seClient in StyleElements) then begin
+          Brush.Color := LStyle.GetSystemColor(clHighlight);
+          if seFont in StyleElements then begin
+            NewTextColor := LStyle.GetStyleFontColor(sfListItemTextSelected);
+            NewSubItemTextColor := NewTextColor;
+          end;
+        end else
+          Brush.Color := clHighlight;
+      end;
     end else begin
       if ItemDisabled then begin
         NewTextColor := clGrayText;
@@ -1509,16 +1625,43 @@ begin
         DrawThemeBackGround(FThemeData, Handle, PartId, StateId, CheckRect, @CheckRect);
       end;
     end;
+
     { Draw background & subitem }
-    if TransparentIfStyled and (LStyle <> nil) then begin
+    if FTransparent then
+    begin
+      if not FTransparentBgCacheValid then
+        UpdateTransparentBgCache;
+      if Assigned(FTransparentBgCache) then
+        BitBlt(Handle, Rect.Left, Rect.Top, Rect.Width, Rect.Height,
+               FTransparentBgCache.Canvas.Handle, Rect.Left, Rect.Top, SRCCOPY)
+      else
+        FillRect(Rect);
+    end;
+
+    if TransparentIfStyled then begin
       { Same method as TTrackBar.CNNotify uses }
       const Rgn = CreateRectRgn(Rect.Left, Rect.Top, Rect.Right, Rect.Bottom);
       SelectClipRgn(Handle, Rgn);
-      LStyle.DrawParentBackground(Self.Handle, Handle, nil, False, Rect);
+      if LStyle <> nil then
+        LStyle.DrawParentBackground(Self.Handle, Handle, nil, False, Rect);
       DeleteObject(Rgn);
       SelectClipRgn(Handle, 0);
     end else
       FillRect(Rect);
+
+    if FTransparent then
+    begin
+      if not FWantTabs and (odSelected in State) and Focused then
+      begin
+        if (LStyle <> nil) and (seClient in StyleElements) then
+          Brush.Color := LStyle.GetSystemColor(clHighlight)
+        else
+          Brush.Color := clHighlight;
+        FillRectWithAlpha(Canvas, Rect, FSelectedItemAlpha);
+      end;
+      Brush.Style := bsClear;
+    end;
+
     FlipRect(Rect, SavedClientRect, IsRightToLeft);
     Inc(Rect.Left);
     const OldColor = SetTextColor(Handle, UColorToRGB(NewTextColor));
@@ -1534,8 +1677,15 @@ begin
       SubItemRect := Rect;
       SubItemRect.Left := SubItemRect.Right - SubItemWidth + FOffset;
       FlipRect(SubItemRect, SavedClientRect, IsRightToLeft);
-      InternalDrawText(ItemState.SubItem, SubItemRect, DrawTextFormat,
-        FWantTabs and ItemDisabled);
+      if TransparentIfStyled and (LStyle <> nil) then begin
+        const OldBkMode = SetBkMode(Handle, Windows.TRANSPARENT);
+        InternalDrawText(ItemState.SubItem, SubItemRect, DrawTextFormat,
+          FWantTabs and ItemDisabled);
+        SetBkMode(Handle, OldBkMode);
+      end
+      else
+        InternalDrawText(ItemState.SubItem, SubItemRect, DrawTextFormat,
+          FWantTabs and ItemDisabled);
       Dec(Rect.Right, SubItemWidth);
     end
     else
@@ -1845,7 +1995,8 @@ end;
 
 function TNewCheckListBox.GetTransparentIfStyled: Boolean;
 begin
-  Result := WantTabs;
+  FTransparentBgCacheValid := False;
+  Result := FTransparent or FWantTabs;
 end;
 
 procedure TNewCheckListBox.HandleScroll;
@@ -1854,7 +2005,7 @@ begin
     transparent and its parent background is complex (such as a bitmap),
     the item backgrounds need to be updated. Can be called even if it's
     not sure the list was actually scrolled. }
-  if FComplexParentBackground and TransparentIfStyled and IsCustomStyleActive then begin
+  if FComplexParentBackground and TransparentIfStyled then begin
     var ScrollBarInfo: TScrollBarInfo;
     ScrollBarInfo.cbSize := SizeOf(ScrollBarInfo);
     if GetScrollBarInfo(Handle, Integer(OBJID_VSCROLL), ScrollBarInfo) and
@@ -2400,6 +2551,14 @@ begin
   end;
 end;
 
+procedure TNewCheckListBox.SetTransparent(Value: Boolean);
+begin
+  if FTransparent <> Value then begin
+    FTransparent := Value;
+    RedrawWindow(Handle, nil, 0, RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW);
+  end;
+end;
+
 procedure TNewCheckListBox.SetUseStyledColor(Value: Boolean);
 begin
   if Value <> FUseStyledColor then
@@ -2707,6 +2866,23 @@ begin
     HandleScroll;
 end;
 
+procedure TNewCheckListBox.WMEraseBkgnd(var Message: TWMEraseBkgnd);
+var
+  R: TRect;
+begin
+  if FTransparent or FWantTabs then
+  begin
+    R := ClientRect;
+    if FStyleServices <> nil then
+      FStyleServices.DrawParentBackground(Self.Handle, Message.DC, nil, False, R)
+    else
+      PerformEraseBackground(Self, Message.DC);
+    Message.Result := 1;
+    Exit;
+  end;
+  inherited;
+end;
+
 procedure TNewCheckListBox.WMNCHitTest(var Message: TWMNCHitTest);
 var
   I: Integer;
@@ -2731,6 +2907,7 @@ procedure TNewCheckListBox.WMSize(var Message: TWMSize);
 var
   I: Integer;
 begin
+  FTransparentBgCacheValid := False;
   inherited;
   { When the scroll bar appears/disappears, the client width changes and we
     must recalculate the height of the items }
@@ -2945,6 +3122,18 @@ var
 begin
   ClientRect := GetClientRect;
 
+  if FTransparent or FWantTabs then
+  begin
+    if HandleAllocated then
+    begin
+      if (FStyleServices <> nil) and FStyleServices.Enabled then
+        FStyleServices.DrawParentBackground(Self.Handle, ACanvas.Handle, nil, False, ClientRect)
+      else
+        PerformEraseBackground(Self, ACanvas.Handle);
+    end;
+    Exit;
+  end;
+
   if (FStyleServices <> nil) and not FStyleServices.IsSystemStyle and (seClient in StyleElements) then
     if FWantTabs then
       if ParentColor then
@@ -3141,6 +3330,39 @@ begin
         RedrawWindow(Handle, nil, 0, RDW_INVALIDATE or RDW_ERASE or RDW_FRAME or RDW_UPDATENOW);
     end;
   end;
+end;
+
+procedure TNewCheckListBox.SetSelectedItemAlpha(Value: Byte);
+begin
+  if FSelectedItemAlpha <> Value then
+  begin
+    FSelectedItemAlpha := Value;
+    Invalidate;
+  end;
+end;
+
+procedure TNewCheckListBox.UpdateTransparentBgCache;
+var
+  CR: TRect;
+begin
+  if not FTransparent or not HandleAllocated then
+    Exit;
+
+  CR := ClientRect;
+  if (CR.Width <= 0) or (CR.Height <= 0) then
+    Exit;
+
+  if (FTransparentBgCache.Width <> CR.Width) or 
+     (FTransparentBgCache.Height <> CR.Height) then
+    FTransparentBgCache.SetSize(CR.Width, CR.Height);
+
+  if FStyleServices <> nil then
+    FStyleServices.DrawParentBackground(Self.Handle, 
+      FTransparentBgCache.Canvas.Handle, nil, False, CR)
+  else
+    PerformEraseBackground(Self, FTransparentBgCache.Canvas.Handle);
+
+  FTransparentBgCacheValid := True;
 end;
 
 {$IFDEF VCLSTYLES}

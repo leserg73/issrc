@@ -105,6 +105,8 @@ procedure TNewCheckListBoxSubItemFontStyle_R(Self: TNewCheckListBox; var T: TFon
 procedure TNewCheckListBoxSubItemFontStyle_W(Self: TNewCheckListBox; const T: TFontStyles; const t1: Integer); begin Self.SubItemFontStyle[t1] := T; end;
 procedure TNewCheckListBoxShowRoot_W(Self: TNewCheckListBox; const T: Boolean); begin Self.ShowRoot := T; end;
 procedure TNewCheckListBoxShowRoot_R(Self: TNewCheckListBox; var T: Boolean); begin T := Self.ShowRoot; end;
+procedure TNewCheckListBoxSelectedItemAlpha_W(Self: TNewCheckListBox; const T: Byte); begin Self.SelectedItemAlpha := T; end;
+procedure TNewCheckListBoxSelectedItemAlpha_R(Self: TNewCheckListBox; var T: Byte); begin T := Self.SelectedItemAlpha; end;
 procedure TNewCheckListBoxTreeViewStyle_W(Self: TNewCheckListBox; const T: Boolean); begin Self.TreeViewStyle := T; end;
 procedure TNewCheckListBoxTreeViewStyle_R(Self: TNewCheckListBox; var T: Boolean); begin T := Self.TreeViewStyle; end;
 procedure TNewCheckListBoxUseStyledColor_W(Self: TNewCheckListBox; const T: Boolean); begin Self.UseStyledColor := T; end;
@@ -113,6 +115,8 @@ procedure TNewCheckListBoxGlyphsTransparentColor_W(Self: TNewCheckListBox; const
 procedure TNewCheckListBoxGlyphsTransparentColor_R(Self: TNewCheckListBox; var T: TColor); begin T := Self.GlyphsTransparentColor; end;
 procedure TNewCheckListBoxUseCustomGlyphs_W(Self: TNewCheckListBox; const T: Boolean); begin Self.UseCustomGlyphs := T; end;
 procedure TNewCheckListBoxUseCustomGlyphs_R(Self: TNewCheckListBox; var T: Boolean); begin T := Self.UseCustomGlyphs; end;
+procedure TNewCheckListBoxTransparent_W(Self: TNewCheckListBox; const T: Boolean); begin Self.Transparent := T; end;
+procedure TNewCheckListBoxTransparent_R(Self: TNewCheckListBox; var T: Boolean); begin T := Self.Transparent; end;
 procedure TNewCheckListBoxOnExpandCollapse_W(Self: TNewCheckListBox; const T: TNotifyEvent); begin Self.OnExpandCollapse := T; end;
 procedure TNewCheckListBoxOnExpandCollapse_R(Self: TNewCheckListBox; var T: TNotifyEvent); begin T := Self.OnExpandCollapse; end;
 procedure TNewCheckListBoxOnItemMouseMove_W(Self: TNewCheckListBox; const T: TItemMouseMoveEvent); begin Self.OnItemMouseMove := T; end;
@@ -147,10 +151,12 @@ begin
     RegisterPropertyHelper(@TNewCheckListBoxSubItemFontColor_R, @TNewCheckListBoxSubItemFontColor_W, 'SubItemFontColor');
     RegisterPropertyHelper(@TNewCheckListBoxSubItemFontStyle_R, @TNewCheckListBoxSubItemFontStyle_W, 'SubItemFontStyle');
     RegisterPropertyHelper(@TNewCheckListBoxShowRoot_R,@TNewCheckListBoxShowRoot_W,'ShowRoot');
+    RegisterPropertyHelper(@TNewCheckListBoxSelectedItemAlpha_R,@TNewCheckListBoxSelectedItemAlpha_W,'SelectedItemAlpha');
     RegisterPropertyHelper(@TNewCheckListBoxTreeViewStyle_R,@TNewCheckListBoxTreeViewStyle_W,'TreeViewStyle');
     RegisterPropertyHelper(@TNewCheckListBoxUseStyledColor_R,@TNewCheckListBoxUseStyledColor_W,'UseStyledColor');
     RegisterPropertyHelper(@TNewCheckListBoxUseCustomGlyphs_R,@TNewCheckListBoxUseCustomGlyphs_W,'UseCustomGlyphs');
     RegisterPropertyHelper(@TNewCheckListBoxGlyphsTransparentColor_R,@TNewCheckListBoxGlyphsTransparentColor_W,'GlyphsTransparentColor');
+    RegisterPropertyHelper(@TNewCheckListBoxTransparent_R,@TNewCheckListBoxTransparent_W,'Transparent');
     RegisterPropertyHelper(@TNewCheckListBoxOnExpandCollapse_R,@TNewCheckListBoxOnExpandCollapse_W,'OnExpandCollapse');
     RegisterPropertyHelper(@TNewCheckListBoxOnItemMouseMove_R,@TNewCheckListBoxOnItemMouseMove_W,'OnItemMouseMove');
   end;
