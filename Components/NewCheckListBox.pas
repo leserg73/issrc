@@ -572,6 +572,112 @@ begin
   end;
 end;
 
+function PNG8To32Bit(Src: TPNGImage): TPNGImage; overload;
+var
+  PLTE: TChunkPLTE;
+  TRNS: TChunktRNS;
+  AlphaValues: array[0..255] of Byte;
+  Y, X, i: Integer;
+  SrcLine: pByteArray;
+  DstRGB: PRGBTriple;
+  DstAlpha: pByteArray;
+  Index: Byte;
+  TransColor: COLORREF;
+  TransR, TransG, TransB: Byte;
+begin
+  Result := nil;
+  if (Src = nil) or Src.Empty then
+    Exit;
+
+  if Src.Header.ColorType in [COLOR_RGBALPHA, COLOR_GRAYSCALEALPHA] then
+  begin
+    Result := TPNGImage.Create;
+    Result.Assign(Src);
+    Exit;
+  end;
+
+  Result := TPNGImage.CreateBlank(COLOR_RGBALPHA, 8, Src.Width, Src.Height);
+  Result.CreateAlpha;
+
+  if Src.Header.ColorType = COLOR_PALETTE then
+  begin
+    PLTE := Src.Chunks.ItemFromClass(TChunkPLTE) as TChunkPLTE;
+    if PLTE = nil then
+      raise Exception.Create('Palette chunk not found');
+
+    FillChar(AlphaValues, SizeOf(AlphaValues), 255);
+
+    TRNS := Src.Chunks.ItemFromClass(TChunktRNS) as TChunktRNS;
+    if TRNS <> nil then
+      for i := 0 to Min(255, Integer(TRNS.DataSize) - 1) do
+        AlphaValues[i] := TRNS.PaletteValues[i];
+
+    for Y := 0 to Src.Height - 1 do
+    begin
+      SrcLine  := Src.Scanline[Y];
+      DstRGB   := Result.Scanline[Y];
+      DstAlpha := Result.AlphaScanline[Y];
+
+      for X := 0 to Src.Width - 1 do
+      begin
+        Index := SrcLine^[X];
+
+        with PLTE.Item[Index] do
+        begin
+          DstRGB^.rgbtRed   := rgbRed;
+          DstRGB^.rgbtGreen := rgbGreen;
+          DstRGB^.rgbtBlue  := rgbBlue;
+        end;
+
+        DstAlpha^[X] := AlphaValues[Index];
+        Inc(DstRGB);
+      end;
+    end;
+  end
+  else
+  begin
+    Result.Canvas.Draw(0, 0, Src);
+
+    if Src.TransparencyMode = ptmBit then
+    begin
+      TransColor := COLORREF(ColorToRGB(Src.TransparentColor));
+      TransR := GetRValue(TransColor);
+      TransG := GetGValue(TransColor);
+      TransB := GetBValue(TransColor);
+
+      for Y := 0 to Result.Height - 1 do
+      begin
+        DstRGB   := Result.Scanline[Y];
+        DstAlpha := Result.AlphaScanline[Y];
+
+        for X := 0 to Result.Width - 1 do
+        begin
+          if (DstRGB^.rgbtRed = TransR) and
+             (DstRGB^.rgbtGreen = TransG) and
+             (DstRGB^.rgbtBlue = TransB) then
+            DstAlpha^[X] := 0
+          else
+            DstAlpha^[X] := 255;
+          Inc(DstRGB);
+        end;
+      end;
+    end;
+  end;
+end;
+
+function PNG8To32Bit(const FileName: string): TPNGImage; overload;
+var
+  Src: TPNGImage;
+begin
+  Src := TPNGImage.Create;
+  try
+    Src.LoadFromFile(FileName);
+    Result := PNG8To32Bit(Src);
+  finally
+    Src.Free;
+  end;
+end;
+
 class constructor TNewCheckListBox.Create;
 begin
   TCustomStyleEngine.RegisterStyleHook(TNewCheckListBox, TNewCheckListBoxStyleHook);
@@ -3422,9 +3528,6 @@ end;
 
 procedure TNewCheckListBox.SetWallpapers(Value: TPNGImage);
 begin
-  { TGraphic.Assign copies the pixel data and preserves the OnChange handler
-    already hooked up in the constructor, which takes care of invalidating
-    the cached background and repainting. }
   FWallpapers.Assign(Value);
 end;
 
@@ -3456,7 +3559,8 @@ begin
   end;
 
   try
-    FWallpapers.LoadFromFile(FileName);
+    FreeAndNil(FWallpapers);
+    FWallpapers := PNG8To32Bit(FileName);
     WallpapersChanged(Self);
   except
     ClearWallpaper;
@@ -3469,6 +3573,7 @@ var
   TempBitmap: TBitmap;
   TempPng: TPNGImage;
 begin
+  FreeAndNil(FWallpapers);
   if IsBitmap then
   begin
     TempBitmap := TBitmap.Create;
@@ -3484,7 +3589,7 @@ begin
     TempPng := TPNGImage.Create;
     try
       TempPng.LoadFromResourceName(HInstance, ResName);
-      FWallpapers.Assign(TempPng);
+      FWallpapers := PNG8To32Bit(TempPng);
     finally
       TempPng.Free;
     end;
@@ -3495,15 +3600,11 @@ end;
 
 procedure TNewCheckListBox.ClearWallpaper;
 begin
-  FWallpapers.Assign(nil);
+  FreeAndNil(FWallpapers);
   WallpapersChanged(Self);
 end;
 
 function TNewCheckListBox.GetWallpaperRenderWidth: Integer;
-{ The width available for the Wallpaper image itself, always reserving the
-  width a vertical scroll bar would take - whether or not one is actually
-  shown right now - so the image is never stretched/shrunk differently
-  depending on whether the scroll bar happens to be visible. }
 var
   ScrollBarInfo: TScrollBarInfo;
   ScrollBarVisible: Boolean;
@@ -3517,9 +3618,6 @@ begin
   ScrollBarVisible := GetScrollBarInfo(Handle, Integer(OBJID_VSCROLL), ScrollBarInfo) and
     (ScrollBarInfo.rgstate[0] <> STATE_SYSTEM_INVISIBLE);
 
-  { When the scroll bar is visible, Windows has already shrunk ClientWidth
-    by its width for us. When it's hidden, we shrink it ourselves, so the
-    logical width used below is the same in both cases. }
   if not ScrollBarVisible then
   begin
     ScrollBarWidth := GetSystemMetricsForDpi(SM_CXVSCROLL, UINT(CurrentPPI));
