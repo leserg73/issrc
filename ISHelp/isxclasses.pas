@@ -630,10 +630,13 @@ TNewCheckListBox = class(TCustomListBox)
   function AddRadioButtonEx(const ACaption, ASubItem: String; ALevel: Byte; AChecked, AEnabled: Boolean; AExpanded: Boolean; AObject: TObject): Integer;
   function CheckItem(const Index: Integer; const AOperation: TCheckItemOperation): Boolean;
   function CheckItemOriginal(const AnOriginalIndex: Integer; const AOperation: TCheckItemOperation): Boolean;
+  function EnsureOriginalItemVisible(AnOriginalIndex: Integer): Integer;
   procedure CollapseAll;
   procedure CollapseItem(Index: Integer);
+  procedure CollapseOriginalItem(AnOriginalIndex: Integer);
   procedure ExpandAll;
   procedure ExpandItem(Index: Integer);
+  procedure ExpandOriginalItem(AnOriginalIndex: Integer);
   procedure LoadBtnBmpFromFile(const FileName: String);
   procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean);
   procedure LoadWallpaperFromFile(const FileName: String);
@@ -655,11 +658,13 @@ TNewCheckListBox = class(TCustomListBox)
   property OriginalIndex[Index: Integer]: Integer read;
   property VisibleIndex[AnOriginalIndex: Integer]: Integer; read;
   property OriginalCount: Integer; read;
-  property OriginalCaption[AnOriginalIndex: Integer]: String; read;
+  property OriginalCaption[AnOriginalIndex: Integer]: String; read write;
   property OriginalChecked[AnOriginalIndex: Integer]: Boolean; read write;
   property OriginalItemObject[AnOriginalIndex: Integer]: TObject; read write;
   property OriginalExpanded[AnOriginalIndex: Integer]: Boolean; read;
   property OriginalItemSubItem[AnOriginalIndex: Integer]: String; read write;
+  property OriginalItemEnabled[AnOriginalIndex: Integer]: Boolean; read write;
+  property OriginalState[AnOriginalIndex: Integer]: TCheckBoxState; read;
   property Flat: Boolean; read write;
   property MinItemHeight: Integer; read write;
   property Offset: Integer; read write;

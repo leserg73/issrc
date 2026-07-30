@@ -155,6 +155,10 @@ type
     function GetOriginalExpanded(AnOriginalIndex: Integer): Boolean;
     function GetOriginalSubItem(AnOriginalIndex: Integer): string;
     procedure SetOriginalSubItem(AnOriginalIndex: Integer; const Value: string);
+    procedure SetOriginalCaption(AnOriginalIndex: Integer; const Value: string);
+    function GetOriginalItemEnabled(AnOriginalIndex: Integer): Boolean;
+    procedure SetOriginalItemEnabled(AnOriginalIndex: Integer; const AEnabled: Boolean);
+    function GetOriginalState(AnOriginalIndex: Integer): TCheckBoxState;
     procedure LBDeleteString(var Message: TMessage); message LB_DELETESTRING;
     procedure LBResetContent(var Message: TMessage); message LB_RESETCONTENT;
     procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
@@ -256,12 +260,15 @@ type
     function CheckItem(const Index: Integer; const AOperation: TCheckItemOperation): Boolean;
     function CheckItemOriginal(const AnOriginalIndex: Integer; const AOperation: TCheckItemOperation): Boolean;
     procedure EnumChildrenOf(Item: Integer; Proc: TEnumChildrenProc; Ext: NativeInt);
+    function EnsureOriginalItemVisible(AnOriginalIndex: Integer): Integer;
     function GetParentOf(Item: Integer): Integer;
     procedure UpdateThreads;
     procedure CollapseAll;
     procedure CollapseItem(Index: Integer);
+    procedure CollapseOriginalItem(AnOriginalIndex: Integer);
     procedure ExpandAll;
     procedure ExpandItem(Index: Integer);
+    procedure ExpandOriginalItem(AnOriginalIndex: Integer);
     procedure LoadBtnBmpFromFile(const FileName: String);
     procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean);
     procedure LoadWallpaperFromFile(const FileName: string);
@@ -283,11 +290,13 @@ type
     property OriginalIndex[Index: Integer]: Integer read GetOriginalIndex;
     property VisibleIndex[AnOriginalIndex: Integer]: Integer read GetVisibleIndex;
     property OriginalCount: Integer read GetOriginalCount;
-    property OriginalCaption[AnOriginalIndex: Integer]: string read GetOriginalCaption;
+    property OriginalCaption[AnOriginalIndex: Integer]: string read GetOriginalCaption write SetOriginalCaption;
     property OriginalChecked[AnOriginalIndex: Integer]: Boolean read GetOriginalChecked write SetOriginalChecked;
     property OriginalItemObject[AnOriginalIndex: Integer]: TObject read GetOriginalItemObject write SetOriginalItemObject;
     property OriginalExpanded[AnOriginalIndex: Integer]: Boolean read GetOriginalExpanded;
     property OriginalItemSubItem[AnOriginalIndex: Integer]: string read GetOriginalSubItem write SetOriginalSubItem;
+    property OriginalItemEnabled[AnOriginalIndex: Integer]: Boolean read GetOriginalItemEnabled write SetOriginalItemEnabled;
+    property OriginalState[AnOriginalIndex: Integer]: TCheckBoxState read GetOriginalState;
     class property ComplexParentBackground: Boolean read FComplexParentBackground write FComplexParentBackground;
   published
     property Align;
@@ -2134,6 +2143,41 @@ begin
   end;
 end;
 
+procedure TNewCheckListBox.SetOriginalCaption(AnOriginalIndex: Integer; const Value: string);
+var
+  VisIndex: Integer;
+begin
+  VisIndex := FOriginalToVisible[AnOriginalIndex];
+  if VisIndex >= 0 then
+    SetCaption(VisIndex, Value)
+  else
+    TItemState(FOriginalStates[AnOriginalIndex]).Caption := Value;
+end;
+
+function TNewCheckListBox.GetOriginalItemEnabled(AnOriginalIndex: Integer): Boolean;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).Enabled;
+end;
+
+procedure TNewCheckListBox.SetOriginalItemEnabled(AnOriginalIndex: Integer; const AEnabled: Boolean);
+var
+  VisIndex: Integer;
+begin
+  if TItemState(FOriginalStates[AnOriginalIndex]).Enabled <> AEnabled then begin
+    TItemState(FOriginalStates[AnOriginalIndex]).Enabled := AEnabled;
+    VisIndex := FOriginalToVisible[AnOriginalIndex];
+    if VisIndex >= 0 then begin
+      const R = ItemRect(VisIndex);
+      InvalidateRect(Handle, @R, True);
+    end;
+  end;
+end;
+
+function TNewCheckListBox.GetOriginalState(AnOriginalIndex: Integer): TCheckBoxState;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).State;
+end;
+
 function TNewCheckListBox.GetState(Index: Integer): TCheckBoxState;
 begin
   Result := ItemStates[Index].State;
@@ -3272,37 +3316,61 @@ begin
 end;
 
 procedure TNewCheckListBox.ExpandItem(Index: Integer);
-var
-  OriginalIndex: Integer;
 begin
   if (Index >= 0) and (Index < Items.Count) and ItemStates[Index].HasChildren then
-  begin
-    OriginalIndex := FVisibleToOriginal[Index];
-    if not TItemState(FOriginalStates[OriginalIndex]).Expanded then
-    begin
-      TItemState(FOriginalStates[OriginalIndex]).Expanded := True;
-      RebuildVisibleMapping;
-      if Assigned(FOnExpandCollapse) then
-        FOnExpandCollapse(Self);
-    end;
-  end;
+    ExpandOriginalItem(FVisibleToOriginal[Index]);
 end;
 
 procedure TNewCheckListBox.CollapseItem(Index: Integer);
-var
-  OriginalIndex: Integer;
 begin
   if (Index >= 0) and (Index < Items.Count) and ItemStates[Index].HasChildren then
+    CollapseOriginalItem(FVisibleToOriginal[Index]);
+end;
+
+procedure TNewCheckListBox.ExpandOriginalItem(AnOriginalIndex: Integer);
+begin
+  if TItemState(FOriginalStates[AnOriginalIndex]).HasChildren and
+     not TItemState(FOriginalStates[AnOriginalIndex]).Expanded then
   begin
-    OriginalIndex := FVisibleToOriginal[Index];
-    if TItemState(FOriginalStates[OriginalIndex]).Expanded then
-    begin
-      TItemState(FOriginalStates[OriginalIndex]).Expanded := False;
-      RebuildVisibleMapping;
-      if Assigned(FOnExpandCollapse) then
-        FOnExpandCollapse(Self);
-    end;
+    TItemState(FOriginalStates[AnOriginalIndex]).Expanded := True;
+    RebuildVisibleMapping;
+    if Assigned(FOnExpandCollapse) then
+      FOnExpandCollapse(Self);
   end;
+end;
+
+procedure TNewCheckListBox.CollapseOriginalItem(AnOriginalIndex: Integer);
+begin
+  if TItemState(FOriginalStates[AnOriginalIndex]).HasChildren and
+     TItemState(FOriginalStates[AnOriginalIndex]).Expanded then
+  begin
+    TItemState(FOriginalStates[AnOriginalIndex]).Expanded := False;
+    RebuildVisibleMapping;
+    if Assigned(FOnExpandCollapse) then
+      FOnExpandCollapse(Self);
+  end;
+end;
+
+function TNewCheckListBox.EnsureOriginalItemVisible(AnOriginalIndex: Integer): Integer;
+var
+  I: Integer;
+  Changed: Boolean;
+begin
+  Changed := False;
+  I := GetOriginalParentOf(AnOriginalIndex);
+  while I >= 0 do begin
+    if not TItemState(FOriginalStates[I]).Expanded then begin
+      TItemState(FOriginalStates[I]).Expanded := True;
+      Changed := True;
+    end;
+    I := GetOriginalParentOf(I);
+  end;
+  if Changed then begin
+    RebuildVisibleMapping;
+    if Assigned(FOnExpandCollapse) then
+      FOnExpandCollapse(Self);
+  end;
+  Result := FOriginalToVisible[AnOriginalIndex];
 end;
 
 procedure TNewCheckListBox.RebuildVisibleMapping;
