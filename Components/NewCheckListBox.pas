@@ -18,7 +18,7 @@ interface
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
   {$IFDEF VCLSTYLES} Vcl.Themes, {$ELSE} Themes, {$ENDIF}
-  StdCtrls, NewUxTheme, Vcl.Imaging.pngimage, System.Generics.Collections;
+  StdCtrls, NewUxTheme, Vcl.Imaging.pngimage;
 
 const
   WM_UPDATEUISTATE = $0128;
@@ -38,6 +38,22 @@ type
   TExpandButtonState = (ebsCollapsed, ebsExpanded);
   TItemArea = (iaOther, iaButton, iaCheckmark, iaItem, iaSubItem, iaGroup);
   TItemMouseMoveEvent = procedure(Sender: TObject; X, Y: Integer; Index: Integer; Area: TItemArea) of object;
+
+  TIntegerList = class(TObject)
+  private
+    FList: TList;
+    function GetItem(Index: Integer): Integer;
+    procedure SetItem(Index: Integer; Value: Integer);
+    function GetCount: Integer;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    function Add(Value: Integer): Integer;
+    procedure Delete(Index: Integer);
+    procedure Clear;
+    property Items[Index: Integer]: Integer read GetItem write SetItem; default;
+    property Count: Integer read GetCount;
+  end;
 
   TItemState = class(TObject)
   public
@@ -80,8 +96,8 @@ type
     FRequireRadioSelection: Boolean;
     FShowLines: Boolean;
     FOriginalStates: TList;
-    FVisibleToOriginal: TList<Integer>;
-    FOriginalToVisible: TList<Integer>;
+    FVisibleToOriginal: TIntegerList;
+    FOriginalToVisible: TIntegerList;
     FWantTabs: Boolean;
     FTransparent: Boolean;
     FThemeData: HTHEME;
@@ -547,6 +563,50 @@ begin
   Result := OleAccAvailable;
 end;
 
+{ TIntegerList }
+
+constructor TIntegerList.Create;
+begin
+  inherited Create;
+  FList := TList.Create;
+end;
+
+destructor TIntegerList.Destroy;
+begin
+  FList.Free;
+  inherited Destroy;
+end;
+
+function TIntegerList.GetItem(Index: Integer): Integer;
+begin
+  Result := Integer(NativeInt(FList[Index]));
+end;
+
+procedure TIntegerList.SetItem(Index: Integer; Value: Integer);
+begin
+  FList[Index] := Pointer(NativeInt(Value));
+end;
+
+function TIntegerList.GetCount: Integer;
+begin
+  Result := Integer(FList.Count);
+end;
+
+function TIntegerList.Add(Value: Integer): Integer;
+begin
+  Result := Integer(FList.Add(Pointer(NativeInt(Value))));
+end;
+
+procedure TIntegerList.Delete(Index: Integer);
+begin
+  FList.Delete(Index);
+end;
+
+procedure TIntegerList.Clear;
+begin
+  FList.Clear;
+end;
+
 { TNewCheckListBox }
 
 procedure FillRectWithAlpha(ACanvas: TCanvas; ARect: TRect; AAlpha: Byte);
@@ -736,8 +796,8 @@ begin
 
   FHasAnyChildren := False;
   FOriginalStates := TList.Create;
-  FVisibleToOriginal := TList<Integer>.Create;
-  FOriginalToVisible := TList<Integer>.Create;
+  FVisibleToOriginal := TIntegerList.Create;
+  FOriginalToVisible := TIntegerList.Create;
   FMinItemHeight := 16;
   FOffset := 4;
   FShowLines := True;
