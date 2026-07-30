@@ -102,8 +102,8 @@ begin
     RegisterMethod('procedure ExpandAll');
     RegisterMethod('procedure ExpandItem(Index: Integer)');
     RegisterMethod('procedure ExpandOriginalItem(AnOriginalIndex: Integer)');
-    RegisterMethod('procedure LoadBtnBmpFromFile(const FileName: String)');
-    RegisterMethod('procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean)');
+    RegisterMethod('procedure LoadGlyphsFromFile(const FileName: String)');
+    RegisterMethod('procedure LoadGlyphsFromResource(const ResName: String; IsBitmap: Boolean)');
     RegisterMethod('procedure LoadWallpaperFromFile(const FileName: string)');
     RegisterMethod('procedure LoadWallpaperFromResource(const ResName: String; IsBitmap: Boolean)');
     RegisterMethod('procedure ClearWallpaper');

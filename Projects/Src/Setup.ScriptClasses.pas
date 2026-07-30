@@ -160,8 +160,8 @@ begin
     RegisterMethod(@TNewCheckListBox.ExpandAll, 'ExpandAll');
     RegisterMethod(@TNewCheckListBox.ExpandItem, 'ExpandItem');
     RegisterMethod(@TNewCheckListBox.ExpandOriginalItem, 'ExpandOriginalItem');
-    RegisterMethod(@TNewCheckListBox.LoadBtnBmpFromFile, 'LoadBtnBmpFromFile');
-    RegisterMethod(@TNewCheckListBox.LoadBtnBmpFromResource, 'LoadBtnBmpFromResource');
+    RegisterMethod(@TNewCheckListBox.LoadGlyphsFromFile, 'LoadGlyphsFromFile');
+    RegisterMethod(@TNewCheckListBox.LoadGlyphsFromResource, 'LoadGlyphsFromResource');
     RegisterMethod(@TNewCheckListBox.LoadWallpaperFromFile, 'LoadWallpaperFromFile');
     RegisterMethod(@TNewCheckListBox.LoadWallpaperFromResource, 'LoadWallpaperFromResource');
     RegisterMethod(@TNewCheckListBox.ClearWallpaper, 'ClearWallpaper');

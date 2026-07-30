@@ -637,8 +637,8 @@ TNewCheckListBox = class(TCustomListBox)
   procedure ExpandAll;
   procedure ExpandItem(Index: Integer);
   procedure ExpandOriginalItem(AnOriginalIndex: Integer);
-  procedure LoadBtnBmpFromFile(const FileName: String);
-  procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean);
+  procedure LoadGlyphsFromFile(const FileName: String);
+  procedure LoadGlyphsFromResource(const ResName: String; IsBitmap: Boolean);
   procedure LoadWallpaperFromFile(const FileName: String);
   procedure LoadWallpaperFromResource(const ResName: String; IsBitmap: Boolean)
   procedure ClearWallpaper;

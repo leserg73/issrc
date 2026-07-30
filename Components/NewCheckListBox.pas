@@ -285,8 +285,8 @@ type
     procedure ExpandAll;
     procedure ExpandItem(Index: Integer);
     procedure ExpandOriginalItem(AnOriginalIndex: Integer);
-    procedure LoadBtnBmpFromFile(const FileName: String);
-    procedure LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean);
+    procedure LoadGlyphsFromFile(const FileName: String);
+    procedure LoadGlyphsFromResource(const ResName: String; IsBitmap: Boolean);
     procedure LoadWallpaperFromFile(const FileName: string);
     procedure LoadWallpaperFromResource(const ResName: String; IsBitmap: Boolean);
     procedure ClearWallpaper;
@@ -3680,7 +3680,7 @@ begin
   end;
 end;
 
-procedure TNewCheckListBox.LoadBtnBmpFromFile(const FileName: String);
+procedure TNewCheckListBox.LoadGlyphsFromFile(const FileName: String);
 var
   Picture: TPicture;
 begin
@@ -3700,7 +3700,7 @@ begin
   end;
 end;
 
-procedure TNewCheckListBox.LoadBtnBmpFromResource(const ResName: String; IsBitmap: Boolean);
+procedure TNewCheckListBox.LoadGlyphsFromResource(const ResName: String; IsBitmap: Boolean);
 var
   TempBitmap: TBitmap;
 begin
