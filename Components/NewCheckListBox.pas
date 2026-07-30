@@ -1876,6 +1876,7 @@ begin
       Toggle(Item);
     if InvalidateItem then
       InvalidateCheck(Item);
+    UpdateHotIndex(FHotIndex);
   end;
   if MouseCapture then
     MouseCapture := False;
@@ -3026,6 +3027,7 @@ var
   CheckRect, ExpandRect, SubItemRect, TextRect: TRect;
   Area: TItemArea;
   CheckLeft: Integer;
+  NeedInvalidateCapture: Boolean;
 begin
   Pos := SmallPointToPoint(Message.Pos);
   Index := ItemAtPos(Pos, True);
@@ -3105,12 +3107,15 @@ begin
       FOnItemMouseMove(Self, Pos.X, Pos.Y, Index, Area);
   end;
 
+  NeedInvalidateCapture := False;
   if FCaptureIndex >= 0 then begin
-    if not FSpaceDown and (Index <> FLastMouseMoveIndex) then begin
-      if (FLastMouseMoveIndex = FCaptureIndex) or (Index = FCaptureIndex) then
-        InvalidateCheck(FCaptureIndex);
-      FLastMouseMoveIndex := Index;
-    end
+    if not FSpaceDown then begin
+      if (Index <> FLastMouseMoveIndex) then begin
+        if (FLastMouseMoveIndex = FCaptureIndex) or (Index = FCaptureIndex) then
+          NeedInvalidateCapture := True;
+        FLastMouseMoveIndex := Index;
+      end;
+    end;
   end;
 
   NewHotIndex := -1;
@@ -3132,7 +3137,15 @@ begin
         NewHotIndex := Index;
     end;
   end;
-  UpdateHotIndex(NewHotIndex);
+
+  if FCaptureIndex < 0 then
+    UpdateHotIndex(NewHotIndex)
+  else if NewHotIndex <> FHotIndex then
+    UpdateHotIndex(-1);
+
+  if NeedInvalidateCapture then
+    InvalidateCheck(FCaptureIndex);
+
   inherited;
 end;
 
