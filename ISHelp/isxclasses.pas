@@ -629,6 +629,7 @@ TNewCheckListBox = class(TCustomListBox)
   function AddRadioButton(const ACaption, ASubItem: String; ALevel: Byte; AChecked, AEnabled: Boolean; AObject: TObject): Integer;
   function AddRadioButtonEx(const ACaption, ASubItem: String; ALevel: Byte; AChecked, AEnabled: Boolean; AExpanded: Boolean; AObject: TObject): Integer;
   function CheckItem(const Index: Integer; const AOperation: TCheckItemOperation): Boolean;
+  function CheckItemOriginal(const AnOriginalIndex: Integer; const AOperation: TCheckItemOperation): Boolean;
   procedure CollapseAll;
   procedure CollapseItem(Index: Integer);
   procedure ExpandAll;
@@ -651,6 +652,14 @@ TNewCheckListBox = class(TCustomListBox)
   property ItemSubItem[Index: Integer]: String; read write;
   property SubItemFontColor[Index: Integer]: TColor; read write;
   property SubItemFontStyle[Index: Integer]: TFontStyles; read write;
+  property OriginalIndex[Index: Integer]: Integer read;
+  property VisibleIndex[AnOriginalIndex: Integer]: Integer; read;
+  property OriginalCount: Integer; read;
+  property OriginalCaption[AnOriginalIndex: Integer]: String; read;
+  property OriginalChecked[AnOriginalIndex: Integer]: Boolean; read write;
+  property OriginalItemObject[AnOriginalIndex: Integer]: TObject; read write;
+  property OriginalExpanded[AnOriginalIndex: Integer]: Boolean; read;
+  property OriginalItemSubItem[AnOriginalIndex: Integer]: String; read write;
   property Flat: Boolean; read write;
   property MinItemHeight: Integer; read write;
   property Offset: Integer; read write;

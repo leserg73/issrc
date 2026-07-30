@@ -18,7 +18,7 @@ interface
 uses
   Windows, Messages, SysUtils, Classes, Graphics, Controls, Forms, Dialogs,
   {$IFDEF VCLSTYLES} Vcl.Themes, {$ELSE} Themes, {$ENDIF}
-  StdCtrls, NewUxTheme, Vcl.Imaging.pngimage;
+  StdCtrls, NewUxTheme, Vcl.Imaging.pngimage, System.Generics.Collections;
 
 const
   WM_UPDATEUISTATE = $0128;
@@ -58,6 +58,7 @@ type
     SubItemFontStyle: TFontStyles;
     Expanded: Boolean;
     HasChildren: Boolean;
+    Caption: string;
   end;
 
   TCheckItemOperation = (coUncheck, coCheck, coCheckWithChildren); 
@@ -78,7 +79,9 @@ type
     FOnClickCheck: TNotifyEvent;
     FRequireRadioSelection: Boolean;
     FShowLines: Boolean;
-    FStateList: TList;
+    FOriginalStates: TList;
+    FVisibleToOriginal: TList<Integer>;
+    FOriginalToVisible: TList<Integer>;
     FWantTabs: Boolean;
     FTransparent: Boolean;
     FThemeData: HTHEME;
@@ -138,6 +141,20 @@ type
     procedure RemeasureItemAndUpdate(Index: Integer);
     procedure Toggle(Index: Integer);
     procedure UpdateScrollRange;
+    function GetOriginalParentOf(OriginalItem: Integer): Integer;
+    function FindNearestVisibleOriginal(AnOriginalIndex: Integer): Integer;
+    procedure RebuildVisibleMapping;
+    function GetOriginalIndex(Index: Integer): Integer;
+    function GetVisibleIndex(AnOriginalIndex: Integer): Integer;
+    function GetOriginalCount: Integer;
+    function GetOriginalCaption(AnOriginalIndex: Integer): string;
+    function GetOriginalChecked(AnOriginalIndex: Integer): Boolean;
+    procedure SetOriginalChecked(AnOriginalIndex: Integer; const Value: Boolean);
+    function GetOriginalItemObject(AnOriginalIndex: Integer): TObject;
+    procedure SetOriginalItemObject(AnOriginalIndex: Integer; const Value: TObject);
+    function GetOriginalExpanded(AnOriginalIndex: Integer): Boolean;
+    function GetOriginalSubItem(AnOriginalIndex: Integer): string;
+    procedure SetOriginalSubItem(AnOriginalIndex: Integer; const Value: string);
     procedure LBDeleteString(var Message: TMessage); message LB_DELETESTRING;
     procedure LBResetContent(var Message: TMessage); message LB_RESETCONTENT;
     procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
@@ -237,6 +254,7 @@ type
     function AddRadioButtonEx(const ACaption, ASubItem: string;
       ALevel: Byte; AChecked, AEnabled: Boolean; AExpanded: Boolean; AObject: TObject): Integer;
     function CheckItem(const Index: Integer; const AOperation: TCheckItemOperation): Boolean;
+    function CheckItemOriginal(const AnOriginalIndex: Integer; const AOperation: TCheckItemOperation): Boolean;
     procedure EnumChildrenOf(Item: Integer; Proc: TEnumChildrenProc; Ext: NativeInt);
     function GetParentOf(Item: Integer): Integer;
     procedure UpdateThreads;
@@ -262,6 +280,14 @@ type
     property SubItemFontColor[Index: Integer]: TColor read GetSubItemFontColor write SetSubItemFontColor;
     property SubItemFontStyle[Index: Integer]: TFontStyles read GetSubItemFontStyle write SetSubItemFontStyle;
     property TransparentIfStyled: Boolean read GetTransparentIfStyled;
+    property OriginalIndex[Index: Integer]: Integer read GetOriginalIndex;
+    property VisibleIndex[AnOriginalIndex: Integer]: Integer read GetVisibleIndex;
+    property OriginalCount: Integer read GetOriginalCount;
+    property OriginalCaption[AnOriginalIndex: Integer]: string read GetOriginalCaption;
+    property OriginalChecked[AnOriginalIndex: Integer]: Boolean read GetOriginalChecked write SetOriginalChecked;
+    property OriginalItemObject[AnOriginalIndex: Integer]: TObject read GetOriginalItemObject write SetOriginalItemObject;
+    property OriginalExpanded[AnOriginalIndex: Integer]: Boolean read GetOriginalExpanded;
+    property OriginalItemSubItem[AnOriginalIndex: Integer]: string read GetOriginalSubItem write SetOriginalSubItem;
     class property ComplexParentBackground: Boolean read FComplexParentBackground write FComplexParentBackground;
   published
     property Align;
@@ -700,7 +726,9 @@ begin
   end;
 
   FHasAnyChildren := False;
-  FStateList := TList.Create;
+  FOriginalStates := TList.Create;
+  FVisibleToOriginal := TList<Integer>.Create;
+  FOriginalToVisible := TList<Integer>.Create;
   FMinItemHeight := 16;
   FOffset := 4;
   FShowLines := True;
@@ -805,11 +833,13 @@ begin
     TAccObject(FAccObjectInstance).ControlDestroying;
     FAccObjectInstance := nil;
   end;
-  if Assigned(FStateList) then begin
-    for var I := FStateList.Count-1 downto 0 do
-      TItemState(FStateList[I]).Free;
-    FStateList.Free;
+  if Assigned(FOriginalStates) then begin
+    for var I := FOriginalStates.Count-1 downto 0 do
+      TItemState(FOriginalStates[I]).Free;
+    FOriginalStates.Free;
   end;
+  FVisibleToOriginal.Free;
+  FOriginalToVisible.Free;
   UpdateThemeData(True, False);
   inherited Destroy;
 end;
@@ -818,7 +848,7 @@ function TNewCheckListBox.AddCheckBox(const ACaption, ASubItem: string;
   ALevel: Byte; AChecked, AEnabled, AHasInternalChildren,
   ACheckWhenParentChecked: Boolean; AObject: TObject): Integer;
 begin
-  if not AEnabled and CheckPotentialRadioParents(Items.Count, ALevel) then
+  if not AEnabled and CheckPotentialRadioParents(Integer(FOriginalStates.Count), ALevel) then
     raise Exception.Create(sRadioCantHaveDisabledChildren);
   Result := AddItem2(itCheck, ACaption, ASubItem, ALevel, AChecked, AEnabled,
     AHasInternalChildren, ACheckWhenParentChecked, True, AObject);
@@ -844,7 +874,7 @@ function TNewCheckListBox.AddCheckBoxEx(const ACaption, ASubItem: string;
   ALevel: Byte; AChecked, AEnabled, AHasInternalChildren,
   ACheckWhenParentChecked: Boolean; AExpanded: Boolean; AObject: TObject): Integer;
 begin
-  if not AEnabled and CheckPotentialRadioParents(Items.Count, ALevel) then
+  if not AEnabled and CheckPotentialRadioParents(Integer(FOriginalStates.Count), ALevel) then
     raise Exception.Create(sRadioCantHaveDisabledChildren);
   Result := AddItem2(itCheck, ACaption, ASubItem, ALevel, AChecked, AEnabled,
     AHasInternalChildren, ACheckWhenParentChecked, AExpanded, AObject);
@@ -879,7 +909,7 @@ begin
   Dec(ALevel);
   while Index >= 0 do
   begin
-    with ItemStates[Index] do
+    with TItemState(FOriginalStates[Index]) do
       if Level = ALevel then
         if ItemType = itRadio then
           Exit
@@ -889,12 +919,12 @@ begin
   end;
   if Index >= 0 then
   begin
-    Index := GetParentOf(Index);
+    Index := GetOriginalParentOf(Index);
     while Index >= 0 do
     begin
-      if ItemStates[Index].ItemType = itRadio then
+      if TItemState(FOriginalStates[Index]).ItemType = itRadio then
         Exit;
-      Index := GetParentOf(Index);
+      Index := GetOriginalParentOf(Index);
     end;
   end;
   Result := False;
@@ -1053,26 +1083,8 @@ var
   ItemState: TItemState;
   L, SubItemWidth: Integer;
   S: String;
-  ParentIndex: Integer;
-  CurrentLevel: Byte;
 begin
   ItemState := ItemStates[Index];
-
-  CurrentLevel := ItemState.Level;
-  ParentIndex := Index - 1;
-  while ParentIndex >= 0 do
-  begin
-    if ItemStates[ParentIndex].Level < CurrentLevel then
-    begin
-      if not ItemStates[ParentIndex].Expanded then
-      begin
-        Height := 1; // Use 1 instead of 0 to avoid LB_ERR
-        Exit;
-      end;
-      CurrentLevel := ItemStates[ParentIndex].Level;
-    end;
-    Dec(ParentIndex);
-  end;
 
   with Canvas do begin
     Font := Self.Font;
@@ -1151,47 +1163,26 @@ end;
 
 procedure TNewCheckListBox.ToggleExpand(Index: Integer);
 var
-  ItemState: TItemState;
-  ParentLevel, I: Integer;
+  OriginalIndex: Integer;
 begin
   if (Index < 0) or (Index >= Items.Count) then
     Exit;
-  ItemState := ItemStates[Index];
-  if not ItemState.HasChildren then
+  if not ItemStates[Index].HasChildren then
     Exit;
-  if (not FTreeViewStyle or FWantTabs or IsRootExpandHidden(Index)) and ItemState.Expanded then
+  if (not FTreeViewStyle or FWantTabs or IsRootExpandHidden(Index)) and
+     ItemStates[Index].Expanded then
     Exit;
-  ItemState.Expanded := not ItemState.Expanded;
-  ParentLevel := ItemLevel[Index];
-  I := Index + 1;
-  while I < Items.Count do begin
-    if ItemLevel[I] <= ParentLevel then Break;
-    RemeasureItem(I);
-    Inc(I);
-  end;
-  UpdateScrollRange;
-  Invalidate;
+  OriginalIndex := FVisibleToOriginal[Index];
+  TItemState(FOriginalStates[OriginalIndex]).Expanded :=
+    not TItemState(FOriginalStates[OriginalIndex]).Expanded;
+  RebuildVisibleMapping;
   if Assigned(FOnExpandCollapse) then
     FOnExpandCollapse(Self);
 end;
 
 function TNewCheckListBox.HasVisibleChildren(Index: Integer): Boolean;
-var
-  I, ParentLevel: Integer;
 begin
-  Result := False;
-  if (Index < 0) or (Index >= Items.Count) then Exit;
-
-  ParentLevel := ItemLevel[Index];
-  for I := Index + 1 to Items.Count - 1 do
-  begin
-    if ItemLevel[I] <= ParentLevel then Break;
-    if ItemLevel[I] = ParentLevel + 1 then
-    begin
-      Result := True;
-      Break;
-    end;
-  end;
+  Result := (Index >= 0) and (Index < Items.Count) and ItemStates[Index].HasChildren;
 end;
 
 const
@@ -1229,7 +1220,6 @@ const
   RadioButtonUncheckedStates: array[Boolean] of TThemedButton = (tbRadioButtonUncheckedDisabled, tbRadioButtonUncheckedNormal);
 var
   SavedClientRect: TRect;
-  IsItemVisible: Boolean;
   LStyle: TCustomStyleServices;
   ButtonCenterX, HalfButtonSize: Integer;
 
@@ -1269,30 +1259,7 @@ var
   procedure DrawThread(I, ThreadLevel, ItemMiddle: Integer; BtnMode: Boolean);
   var
     ThreadPosX, HorzLen, ThreadBottom: Integer;
-    LocalParentIndex, LocalCurrentLevel: Integer;
-    LocalAnyParentCollapsed: Boolean;
-    LocalGroupParentIndex: Integer;
   begin
-    LocalAnyParentCollapsed := False;
-    LocalCurrentLevel := ItemLevel[Index];
-    LocalParentIndex := Index - 1;
-    LocalGroupParentIndex := -1;
-
-    while (LocalParentIndex >= 0) do
-    begin
-      if ItemStates[LocalParentIndex].Level < LocalCurrentLevel then
-      begin
-        if not ItemStates[LocalParentIndex].Expanded then
-        begin
-          LocalAnyParentCollapsed := True;
-          if (LocalGroupParentIndex = -1) or (ItemStates[LocalParentIndex].Level < ItemStates[LocalGroupParentIndex].Level) then
-            LocalGroupParentIndex := LocalParentIndex;
-        end;
-        LocalCurrentLevel := ItemStates[LocalParentIndex].Level;
-      end;
-      Dec(LocalParentIndex);
-    end;
-
     ThreadPosX := (FCheckWidth + 2 * FOffset) * I + FCheckWidth div 2 + FOffset;
 
     if BtnMode and FShowRoot then
@@ -1305,16 +1272,12 @@ var
     begin
       if ItemStates[Index].IsLastChild then
         ThreadBottom := ItemMiddle;
-      if IsItemVisible and not LocalAnyParentCollapsed then
-        LineDDA(FlipX(ThreadPosX), ItemMiddle, FlipX(ThreadPosX + HorzLen),
-          ItemMiddle, @LineDDAProc, NativeInt(Canvas));
+      LineDDA(FlipX(ThreadPosX), ItemMiddle, FlipX(ThreadPosX + HorzLen),
+        ItemMiddle, @LineDDAProc, NativeInt(Canvas));
     end;
 
-    if (LocalAnyParentCollapsed and (I < ItemStates[LocalGroupParentIndex].Level)) or IsItemVisible then
-      LineDDA(FlipX(ThreadPosX), Rect.Top, FlipX(ThreadPosX), ThreadBottom,
-        @LineDDAProc, NativeInt(Canvas))
-    else
-      Canvas.Pixels[FlipX(ThreadPosX), Rect.Top + (Rect.Height div 2)] := clGrayText;
+    LineDDA(FlipX(ThreadPosX), Rect.Top, FlipX(ThreadPosX), ThreadBottom,
+      @LineDDAProc, NativeInt(Canvas));
   end;
 
   procedure DrawRootLineSegment(const FromMiddle, ToMiddle: Integer; const FromHasChildren, ToHasChildren: Boolean);
@@ -1399,8 +1362,6 @@ var
   PartId, StateId: Integer;
   Size: TSize;
   ShouldDrawExpandButton: Boolean;
-  AnyParentCollapsed: Boolean;
-  GroupParentIndex, ThreadPosX, CurrentLevel, ParentIndex: Integer;
   J, HorzLen: Integer;
   PrevItemMiddle, NextItemMiddle: Integer;
   PrevRootIndex, NextRootIndex: Integer;
@@ -1410,58 +1371,6 @@ var
 begin
   if not RectIntersect(Rect, GetClientRect) then
     Exit;
-
-  IsItemVisible := (SendMessage(Handle, LB_GETITEMHEIGHT, Index, 0) > 1);
-
-  if not IsItemVisible then
-  begin
-    AnyParentCollapsed := False;
-    GroupParentIndex := -1;
-    CurrentLevel := ItemLevel[Index];
-    ParentIndex := Index - 1;
-
-    while (ParentIndex >= 0) do
-    begin
-      if ItemStates[ParentIndex].Level < CurrentLevel then
-      begin
-        if not ItemStates[ParentIndex].Expanded then
-        begin
-          AnyParentCollapsed := True;
-          if (GroupParentIndex = -1) or (ItemStates[ParentIndex].Level < ItemStates[GroupParentIndex].Level) then
-            GroupParentIndex := ParentIndex;
-        end;
-        CurrentLevel := ItemStates[ParentIndex].Level;
-      end;
-      Dec(ParentIndex);
-    end;
-
-    if AnyParentCollapsed and FShowLines then
-    begin
-      if not FThreadsUpToDate then 
-      begin
-        UpdateThreads;
-        FThreadsUpToDate := True;
-      end;
-
-      SavedClientRect := ClientRect;
-      FlipRect(Rect, SavedClientRect, IsRightToLeft);
-
-      Canvas.Pen.Color := clGrayText;
-      ThreadLevel := ItemLevel[Index];
-
-      for I := 0 to ThreadLevel - 1 do
-        if (I in ItemStates[Index].ThreadCache) and 
-           (I < ItemStates[GroupParentIndex].Level) and 
-           ((Index mod 2) = 0) then
-        begin
-          ThreadPosX := (FCheckWidth + 2 * FOffset) * I + FCheckWidth div 2 + FOffset;
-          if FTreeViewStyle and FShowRoot then
-            Inc(ThreadPosX, 2 * FOffset + FExpandButtonSize + 2);
-          Canvas.Pixels[FlipX(ThreadPosX), Rect.Top + (Rect.Height div 2)] := clGrayText;
-        end;
-    end;
-    Exit;
-  end;
 
   if FShowLines and not FThreadsUpToDate then begin
     UpdateThreads;
@@ -1899,7 +1808,7 @@ procedure TNewCheckListBox.EnumChildrenOf(Item: Integer; Proc: TEnumChildrenProc
 var
   L: Integer;
 begin
-  if (Item < -1) or (Item >= Items.Count) then
+  if (Item < -1) or (Item >= FOriginalStates.Count) then
     Exit;
   if Item = -1 then
   begin
@@ -1908,13 +1817,14 @@ begin
   end
   else
   begin
-    L := ItemLevel[Item] + 1;
+    L := TItemState(FOriginalStates[Item]).Level + 1;
     Inc(Item);
   end;
-  while (Item < Items.Count) and (ItemLevel[Item] >= L) do
+  while (Item < FOriginalStates.Count) and (TItemState(FOriginalStates[Item]).Level >= L) do
   begin
-    if ItemLevel[Item] = L then
-      Proc(Item, (Item < Items.Count - 1) and (ItemLevel[Item + 1] > L), Ext);
+    if TItemState(FOriginalStates[Item]).Level = L then
+      Proc(Item, (Item < FOriginalStates.Count - 1) and
+        (TItemState(FOriginalStates[Item + 1]).Level > L), Ext);
     Inc(Item);
   end;
 end;
@@ -1925,25 +1835,27 @@ function TNewCheckListBox.AddItem2(AType: TItemType;
   AObject: TObject): Integer;
 var
   ItemState: TItemState;
-  I: Integer;
-  ParentHasChildren: Boolean;
+  OriginalIndex, ParentOriginalIndex, VisibleIndex: Integer;
+  ParentHasChildren, ItemVisible: Boolean;
 begin
-  if Items.Count <> FStateList.Count then  { sanity check }
+  if (FVisibleToOriginal.Count <> Items.Count) or
+     (FOriginalToVisible.Count <> FOriginalStates.Count) then  { sanity check }
     raise Exception.Create('List item and state item count mismatch');
-  if Items.Count > 0 then
+
+  if FOriginalStates.Count > 0 then
   begin
-    if ItemLevel[Items.Count - 1] + 1 < ALevel then
-      ALevel := Byte(ItemLevel[Items.Count - 1] + 1);
+    if TItemState(FOriginalStates[FOriginalStates.Count - 1]).Level + 1 < ALevel then
+      ALevel := Byte(TItemState(FOriginalStates[FOriginalStates.Count - 1]).Level + 1);
   end
   else
     ALevel := 0;
   FThreadsUpToDate := False;
   { Use our own grow code to minimize heap fragmentation }
-  if FStateList.Count = FStateList.Capacity then begin
-    if FStateList.Capacity < 64 then
-      FStateList.Capacity := 64
+  if FOriginalStates.Count = FOriginalStates.Capacity then begin
+    if FOriginalStates.Capacity < 64 then
+      FOriginalStates.Capacity := 64
     else
-      FStateList.Capacity := FStateList.Capacity * 2;
+      FOriginalStates.Capacity := FOriginalStates.Capacity * 2;
   end;
   ItemState := TItemState.Create;
   try
@@ -1951,6 +1863,7 @@ begin
     ItemState.Enabled := AEnabled;
     ItemState.Obj := AObject;
     ItemState.Level := ALevel;
+    ItemState.Caption := ACaption;
     ItemState.SubItem := ASubItem;
     ItemState.HasInternalChildren := AHasInternalChildren;
     ItemState.CheckWhenParentChecked := ACheckWhenParentChecked;
@@ -1960,47 +1873,71 @@ begin
     ItemState.Free;
     raise;
   end;
-  FStateList.Add(ItemState);
+
+  OriginalIndex := Integer(FOriginalStates.Add(ItemState));
+  FOriginalToVisible.Add(-1);
   try
-    Result := Items.Add(ACaption);
+    ParentOriginalIndex := -1;
+    if ALevel > 0 then
+    begin
+      ParentOriginalIndex := GetOriginalParentOf(OriginalIndex);
+      if ParentOriginalIndex >= 0 then
+        TItemState(FOriginalStates[ParentOriginalIndex]).HasChildren := True;
+    end;
+
+    ParentHasChildren := False;
+    if ParentOriginalIndex >= 0 then
+      ParentHasChildren := TItemState(FOriginalStates[ParentOriginalIndex]).HasChildren;
+    if ItemState.HasChildren or ParentHasChildren then
+      FHasAnyChildren := True;
+
+    ItemVisible := (ParentOriginalIndex = -1) or
+      ((FOriginalToVisible[ParentOriginalIndex] <> -1) and
+       TItemState(FOriginalStates[ParentOriginalIndex]).Expanded);
+
+    if ItemVisible then
+    begin
+      FVisibleToOriginal.Add(OriginalIndex);
+      VisibleIndex := Items.Add(ACaption);
+      FOriginalToVisible[OriginalIndex] := VisibleIndex;
+    end
+    else
+      VisibleIndex := -1;
   except
-    FStateList.Delete(FStateList.Count-1);
+    FOriginalToVisible.Delete(OriginalIndex);
+    FOriginalStates.Delete(OriginalIndex);
+    if (FVisibleToOriginal.Count > 0) and
+       (FVisibleToOriginal[FVisibleToOriginal.Count - 1] = OriginalIndex) then
+      FVisibleToOriginal.Delete(FVisibleToOriginal.Count - 1);
     ItemState.Free;
     raise;
   end;
-
-  I := -1;
-  if ALevel > 0 then
-  begin
-    I := GetParentOf(Result);
-    if I >= 0 then
-      ItemStates[I].HasChildren := True;
-  end;
-
-  ParentHasChildren := False;
-  if I >= 0 then
-    ParentHasChildren := ItemStates[I].HasChildren;
-  if ItemState.HasChildren or ParentHasChildren then
-    FHasAnyChildren := True;
 
   { If the first item in a radio group is being added, and it is top-level or
     has a checked parent, force it to be checked. (We don't want to allow radio
     groups with no selection.) }
   if (AType = itRadio) and not AChecked and AEnabled then begin
-    I := GetParentOf(Result);
     { FRequireRadioSelection only affects top-level items; we never allow
       child radio groups with no selection (because nobody should need that) }
-    if FRequireRadioSelection or (I <> -1) then
-      if (I = -1) or (GetState(I) <> cbUnchecked) then
-        if FindCheckedSibling(Result) = -1 then
+    if FRequireRadioSelection or (ParentOriginalIndex <> -1) then
+      if (ParentOriginalIndex = -1) or
+         (TItemState(FOriginalStates[ParentOriginalIndex]).State <> cbUnchecked) then
+        if FindCheckedSibling(OriginalIndex) = -1 then
           AChecked := True;
   end;
-  SetChecked(Result, AChecked);
 
-  RemeasureItem(Result);
+  if AChecked then
+    CheckItemOriginal(OriginalIndex, coCheck)
+  else
+    CheckItemOriginal(OriginalIndex, coUncheck);
 
-  if HandleAllocated and not (csLoading in ComponentState) then
-    UpdateScrollRange;
+  if VisibleIndex >= 0 then begin
+    RemeasureItem(VisibleIndex);
+    if HandleAllocated and not (csLoading in ComponentState) then
+      UpdateScrollRange;
+  end;
+
+  Result := VisibleIndex;
 end;
 
 function TNewCheckListBox.FindAccel(VK: Word): Integer;
@@ -2020,21 +1957,6 @@ function TNewCheckListBox.FindNextItem(StartFrom: Integer; GoForward,
       Result := (ItemType = itRadio) and (State <> cbChecked)
   end;
 
-  function IsItemVisible(Index: Integer): Boolean;
-  var
-    ParentIndex: Integer;
-  begin
-    Result := True;
-    ParentIndex := GetParentOf(Index);
-    while ParentIndex >= 0 do begin
-      if not ItemStates[ParentIndex].Expanded then begin
-        Result := False;
-        Break;
-      end;
-      ParentIndex := GetParentOf(ParentIndex);
-    end;
-  end;
-
 var
   Delta: Integer;
 begin
@@ -2045,7 +1967,7 @@ begin
     Delta := Ord(GoForward) * 2 - 1;
     Result := StartFrom + Delta;
     while (Result >= 0) and (Result < Items.Count) do begin
-      if CanFocusItem(Result) and IsItemVisible(Result) and
+      if CanFocusItem(Result) and
          (not SkipUncheckedRadios or not ShouldSkip(Result)) then
         Break;
       Result := Result + Delta;
@@ -2084,7 +2006,7 @@ end;
 
 function TNewCheckListBox.GetItemState(Index: Integer): TItemState;
 begin
-  Result := FStateList[Index];
+  Result := TItemState(FOriginalStates[FVisibleToOriginal[Index]]);
 end;
 
 function TNewCheckListBox.GetLevel(Index: Integer): Byte;
@@ -2111,6 +2033,96 @@ begin
       end;
     end;
   Result := -1;
+end;
+
+function TNewCheckListBox.GetOriginalParentOf(OriginalItem: Integer): Integer;
+var
+  Level, I: Integer;
+begin
+  Level := TItemState(FOriginalStates[OriginalItem]).Level;
+  if Level > 0 then
+    for I := OriginalItem - 1 downto 0 do begin
+      if TItemState(FOriginalStates[I]).Level < Level then begin
+        Result := I;
+        Exit;
+      end;
+    end;
+  Result := -1;
+end;
+
+function TNewCheckListBox.FindNearestVisibleOriginal(AnOriginalIndex: Integer): Integer;
+begin
+  Result := AnOriginalIndex;
+  while (Result >= 0) and (FOriginalToVisible[Result] = -1) do
+    Result := GetOriginalParentOf(Result);
+end;
+
+function TNewCheckListBox.GetOriginalIndex(Index: Integer): Integer;
+begin
+  Result := FVisibleToOriginal[Index];
+end;
+
+function TNewCheckListBox.GetVisibleIndex(AnOriginalIndex: Integer): Integer;
+begin
+  if (AnOriginalIndex >= 0) and (AnOriginalIndex < FOriginalToVisible.Count) then
+    Result := FOriginalToVisible[AnOriginalIndex]
+  else
+    Result := -1;
+end;
+
+function TNewCheckListBox.GetOriginalCount: Integer;
+begin
+  Result := Integer(FOriginalStates.Count);
+end;
+
+function TNewCheckListBox.GetOriginalCaption(AnOriginalIndex: Integer): string;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).Caption;
+end;
+
+function TNewCheckListBox.GetOriginalChecked(AnOriginalIndex: Integer): Boolean;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).State <> cbUnchecked;
+end;
+
+procedure TNewCheckListBox.SetOriginalChecked(AnOriginalIndex: Integer; const Value: Boolean);
+begin
+  if Value then
+    CheckItemOriginal(AnOriginalIndex, coCheck)
+  else
+    CheckItemOriginal(AnOriginalIndex, coUncheck);
+end;
+
+function TNewCheckListBox.GetOriginalItemObject(AnOriginalIndex: Integer): TObject;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).Obj;
+end;
+
+procedure TNewCheckListBox.SetOriginalItemObject(AnOriginalIndex: Integer; const Value: TObject);
+begin
+  TItemState(FOriginalStates[AnOriginalIndex]).Obj := Value;
+end;
+
+function TNewCheckListBox.GetOriginalExpanded(AnOriginalIndex: Integer): Boolean;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).Expanded;
+end;
+
+function TNewCheckListBox.GetOriginalSubItem(AnOriginalIndex: Integer): string;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).SubItem;
+end;
+
+procedure TNewCheckListBox.SetOriginalSubItem(AnOriginalIndex: Integer; const Value: string);
+var
+  VisIndex: Integer;
+begin
+  if TItemState(FOriginalStates[AnOriginalIndex]).SubItem <> Value then begin
+    TItemState(FOriginalStates[AnOriginalIndex]).SubItem := Value;
+    VisIndex := FOriginalToVisible[AnOriginalIndex];
+    if VisIndex >= 0 then
+      RemeasureItemAndUpdate(VisIndex);
+  end;
 end;
 
 function TNewCheckListBox.GetState(Index: Integer): TCheckBoxState;
@@ -2320,6 +2332,7 @@ end;
 
 procedure TNewCheckListBox.SetCaption(Index: Integer; const Value: String);
 begin
+  ItemStates[Index].Caption := Value;
   { Changing an item's text actually involves deleting and re-inserting the
     item. Increment FDisableItemStateDeletion so the item state isn't lost. }
   Inc(FDisableItemStateDeletion);
@@ -2344,26 +2357,26 @@ function TNewCheckListBox.FindCheckedSibling(const AIndex: Integer): Integer;
 var
   ThisLevel, I: Integer;
 begin
-  ThisLevel := ItemStates[AIndex].Level;
+  ThisLevel := TItemState(FOriginalStates[AIndex]).Level;
   for I := AIndex-1 downto 0 do begin
-    if ItemStates[I].Level < ThisLevel then
+    if TItemState(FOriginalStates[I]).Level < ThisLevel then
       Break;
-    if ItemStates[I].Level = ThisLevel then begin
-      if ItemStates[I].ItemType <> itRadio then
+    if TItemState(FOriginalStates[I]).Level = ThisLevel then begin
+      if TItemState(FOriginalStates[I]).ItemType <> itRadio then
         Break;
-      if GetState(I) <> cbUnchecked then begin
+      if TItemState(FOriginalStates[I]).State <> cbUnchecked then begin
         Result := I;
         Exit;
       end;
     end;
   end;
-  for I := AIndex+1 to Items.Count-1 do begin
-    if ItemStates[I].Level < ThisLevel then
+  for I := AIndex+1 to Integer(FOriginalStates.Count)-1 do begin
+    if TItemState(FOriginalStates[I]).Level < ThisLevel then
       Break;
-    if ItemStates[I].Level = ThisLevel then begin
-      if ItemStates[I].ItemType <> itRadio then
+    if TItemState(FOriginalStates[I]).Level = ThisLevel then begin
+      if TItemState(FOriginalStates[I]).ItemType <> itRadio then
         Break;
-      if GetState(I) <> cbUnchecked then begin
+      if TItemState(FOriginalStates[I]).State <> cbUnchecked then begin
         Result := I;
         Exit;
       end;
@@ -2372,20 +2385,30 @@ begin
   Result := -1;
 end;
 
-function TNewCheckListBox.CheckItem(const Index: Integer;
+function TNewCheckListBox.CheckItemOriginal(const AnOriginalIndex: Integer;
   const AOperation: TCheckItemOperation): Boolean;
 { Tries to update the checked state of Index. Returns True if any changes were
   made to the state of Index or any of its children. }
 
-  procedure SetItemState(const AIndex: Integer; const AState: TCheckBoxState);
+  function OState(const I: Integer): TItemState;
   begin
-    if ItemStates[AIndex].State <> AState then begin
-      ItemStates[AIndex].State := AState;
-      InvalidateCheck(AIndex);
-      { Notify MSAA of the state change }
-      if Assigned(NotifyWinEventFunc) then
-        NotifyWinEventFunc(EVENT_OBJECT_STATECHANGE, Handle, OBJID_CLIENT,
-          1 + AIndex);
+    Result := TItemState(FOriginalStates[I]);
+  end;
+
+  procedure SetItemState(const AIndex: Integer; const AState: TCheckBoxState);
+  var
+    VisIndex: Integer;
+  begin
+    if OState(AIndex).State <> AState then begin
+      OState(AIndex).State := AState;
+      VisIndex := FOriginalToVisible[AIndex];
+      if VisIndex >= 0 then begin
+        InvalidateCheck(VisIndex);
+        { Notify MSAA of the state change }
+        if Assigned(NotifyWinEventFunc) then
+          NotifyWinEventFunc(EVENT_OBJECT_STATECHANGE, Handle, OBJID_CLIENT,
+            1 + VisIndex);
+      end;
     end;
   end;
 
@@ -2398,15 +2421,15 @@ function TNewCheckListBox.CheckItem(const Index: Integer;
   begin
     HasChecked := False;
     HasUnchecked := False;
-    RootLevel := ItemStates[AIndex].Level;
-    for I := AIndex+1 to Items.Count-1 do begin
-      if ItemStates[I].Level <= RootLevel then
+    RootLevel := OState(AIndex).Level;
+    for I := AIndex+1 to Integer(FOriginalStates.Count)-1 do begin
+      if OState(I).Level <= RootLevel then
         Break;
-      if (ItemStates[I].Level = RootLevel+1) and
-         (ItemStates[I].ItemType in [itCheck, itRadio]) then begin
-        case GetState(I) of
+      if (OState(I).Level = RootLevel+1) and
+         (OState(I).ItemType in [itCheck, itRadio]) then begin
+        case OState(I).State of
           cbUnchecked: begin
-              if (ItemStates[I].ItemType <> itRadio) or
+              if (OState(I).ItemType <> itRadio) or
                  (FindCheckedSibling(I) = -1) then
                 HasUnchecked := True;
             end;
@@ -2424,12 +2447,12 @@ function TNewCheckListBox.CheckItem(const Index: Integer;
     { If the parent is a check box with children, don't allow it to be checked
       if none of its children are checked, unless it "has internal children" }
     if HasUnchecked and not HasChecked and
-       (ItemStates[AIndex].ItemType = itCheck) and
-       not ItemStates[AIndex].HasInternalChildren then
+       (OState(AIndex).ItemType = itCheck) and
+       not OState(AIndex).HasInternalChildren then
       ACheck := False;
 
     if ACheck or HasChecked then begin
-      if HasUnchecked and (ItemStates[AIndex].ItemType = itCheck) then
+      if HasUnchecked and (OState(AIndex).ItemType = itCheck) then
         Result := cbGrayed
       else
         Result := cbChecked;
@@ -2448,14 +2471,14 @@ function TNewCheckListBox.CheckItem(const Index: Integer;
     NewState: TCheckBoxState;
   begin
     Result := False;
-    RootLevel := ItemStates[AIndex].Level;
-    for I := AIndex+1 to Items.Count-1 do begin
-      if ItemStates[I].Level <= RootLevel then
+    RootLevel := OState(AIndex).Level;
+    for I := AIndex+1 to Integer(FOriginalStates.Count)-1 do begin
+      if OState(I).Level <= RootLevel then
         Break;
-      if (ItemStates[I].Level = RootLevel+1) and ItemStates[I].Enabled and
+      if (OState(I).Level = RootLevel+1) and OState(I).Enabled and
          ((AOperation = coUncheck) or
-          ((AOperation = coCheckWithChildren) and ItemStates[I].CheckWhenParentChecked) or
-          (ItemStates[I].ItemType = itRadio)) then
+          ((AOperation = coCheckWithChildren) and OState(I).CheckWhenParentChecked) or
+          (OState(I).ItemType = itRadio)) then
         { If checking and I is a radio button, don't recurse if a sibling
           already got checked in a previous iteration of this loop. This is
           needed in the following case to prevent all three radio buttons from
@@ -2467,13 +2490,13 @@ function TNewCheckListBox.CheckItem(const Index: Integer;
               ( ) Radio 3
                   [ ] Child check
         }
-        if (AOperation = coUncheck) or (ItemStates[I].ItemType <> itRadio) or
+        if (AOperation = coUncheck) or (OState(I).ItemType <> itRadio) or
            (FindCheckedSibling(I) = -1) then
           if RecursiveCheck(I, AOperation) then
             Result := True;
     end;
     NewState := CalcState(AIndex, AOperation <> coUncheck);
-    if GetState(AIndex) <> NewState then begin
+    if OState(AIndex).State <> NewState then begin
       SetItemState(AIndex, NewState);
       Result := True;
     end;
@@ -2499,14 +2522,14 @@ function TNewCheckListBox.CheckItem(const Index: Integer;
   var
     RootLevel, I: Integer;
   begin
-    RootLevel := ItemStates[AIndex].Level;
-    for I := AIndex+1 to Items.Count-1 do begin
-      if ItemStates[I].Level <= RootLevel then
+    RootLevel := OState(AIndex).Level;
+    for I := AIndex+1 to Integer(FOriginalStates.Count)-1 do begin
+      if OState(I).Level <= RootLevel then
         Break;
-      if (ItemStates[I].Level = RootLevel+1) and
-         (ItemStates[I].ItemType = itRadio) and
-         ItemStates[I].Enabled and
-         (GetState(I) <> cbChecked) and
+      if (OState(I).Level = RootLevel+1) and
+         (OState(I).ItemType = itRadio) and
+         OState(I).Enabled and
+         (OState(I).State <> cbChecked) and
          (FindCheckedSibling(I) = -1) then
         { Note: This uses coCheck instead of coCheckWithChildren (or the value
           of AOperation) in order to keep side effects to a minimum. Seems
@@ -2530,9 +2553,9 @@ function TNewCheckListBox.CheckItem(const Index: Integer;
   begin
     I := AIndex;
     while True do begin
-      ChildChecked := (GetState(I) <> cbUnchecked);
+      ChildChecked := (OState(I).State <> cbUnchecked);
 
-      I := GetParentOf(I);
+      I := GetOriginalParentOf(I);
       if I = -1 then
         Break;
 
@@ -2541,11 +2564,11 @@ function TNewCheckListBox.CheckItem(const Index: Integer;
       if ChildChecked then
         EnsureChildRadioItemsHaveSelection(I);
 
-      NewState := CalcState(I, GetState(I) <> cbUnchecked);
+      NewState := CalcState(I, OState(I).State <> cbUnchecked);
 
       { If a parent radio button is becoming checked, uncheck any previously
         selected sibling of that radio button }
-      if (NewState <> cbUnchecked) and (ItemStates[I].ItemType = itRadio) then
+      if (NewState <> cbUnchecked) and (OState(I).ItemType = itRadio) then
         UncheckSiblings(I);
 
       SetItemState(I, NewState);
@@ -2553,7 +2576,7 @@ function TNewCheckListBox.CheckItem(const Index: Integer;
   end;
 
 begin
-  if ItemStates[Index].ItemType = itRadio then begin
+  if OState(AnOriginalIndex).ItemType = itRadio then begin
     { Setting Checked to False on a radio button is a no-op. (A radio button
       may only be unchecked by checking another radio button in the group, or
       by unchecking a parent check box.) }
@@ -2563,15 +2586,21 @@ begin
     end;
     { Before checking a new item in a radio group, uncheck any siblings and
       their children }
-    UncheckSiblings(Index);
+    UncheckSiblings(AnOriginalIndex);
   end;
 
   { Check or uncheck this item and all its children }
-  Result := RecursiveCheck(Index, AOperation);
+  Result := RecursiveCheck(AnOriginalIndex, AOperation);
 
   { Update state of parents. For example, if a child check box is being
     checked, its parent must also become checked if it isn't already. }
-  UpdateParentStates(Index);
+  UpdateParentStates(AnOriginalIndex);
+end;
+
+function TNewCheckListBox.CheckItem(const Index: Integer;
+  const AOperation: TCheckItemOperation): Boolean;
+begin
+  Result := CheckItemOriginal(FVisibleToOriginal[Index], AOperation);
 end;
 
 procedure TNewCheckListBox.SetFlat(Value: Boolean);
@@ -2768,33 +2797,45 @@ end;
 
 procedure TNewCheckListBox.LBDeleteString(var Message: TMessage);
 var
+  OriginalIndex, K: Integer;
   ItemState: TItemState;
 begin
   inherited;
   if FDisableItemStateDeletion = 0 then begin
     const I = Integer(Message.WParam);
-    if (I >= 0) and (I < FStateList.Count) then begin
-      ItemState := FStateList[I];
-      FStateList.Delete(I);
-      if ItemState.HasChildren then
-        UpdateHasAnyChildren;
-      ItemState.Free;
+    if (I >= 0) and (I < FVisibleToOriginal.Count) then begin
+      OriginalIndex := FVisibleToOriginal[I];
+      FVisibleToOriginal.Delete(I);
+
+      if (OriginalIndex >= 0) and (OriginalIndex < FOriginalStates.Count) then begin
+        ItemState := TItemState(FOriginalStates[OriginalIndex]);
+        FOriginalStates.Delete(OriginalIndex);
+        FOriginalToVisible.Delete(OriginalIndex);
+        if ItemState.HasChildren then
+          UpdateHasAnyChildren;
+        ItemState.Free;
+
+        for K := 0 to Integer(FVisibleToOriginal.Count) - 1 do
+          if FVisibleToOriginal[K] > OriginalIndex then
+            FVisibleToOriginal[K] := FVisibleToOriginal[K] - 1;
+        for K := 0 to Integer(FOriginalToVisible.Count) - 1 do
+          if FOriginalToVisible[K] > I then
+            FOriginalToVisible[K] := FOriginalToVisible[K] - 1;
+      end;
     end;
   end;
 end;
 
 procedure TNewCheckListBox.LBResetContent(var Message: TMessage);
-var
-  ItemState: TItemState;
 begin
   inherited;
   if FDisableItemStateDeletion = 0 then begin
-    for var I := FStateList.Count-1 downto 0 do begin
-      ItemState := FStateList[I];
-      FStateList.Delete(I);
-      ItemState.Free;
-    end;
-  FHasAnyChildren := False;
+    for var I := FOriginalStates.Count-1 downto 0 do
+      TItemState(FOriginalStates[I]).Free;
+    FOriginalStates.Clear;
+    FVisibleToOriginal.Clear;
+    FOriginalToVisible.Clear;
+    FHasAnyChildren := False;
   end;
 end;
 
@@ -2875,9 +2916,6 @@ var
 begin
   Pos := SmallPointToPoint(Message.Pos);
   Index := ItemAtPos(Pos, True);
-
-  if (Index >= 0) and (SendMessage(Handle, LB_GETITEMHEIGHT, Index, 0) = 1) then
-    Index := -1;
 
   Area := iaOther;
 
@@ -3126,13 +3164,11 @@ begin
     FTreeViewStyle := Value;
     if not Value then
     begin
-      for I := 0 to Items.Count - 1 do
-      begin
-        if ItemStates[I].HasChildren and not ItemStates[I].Expanded then
-          ItemStates[I].Expanded := True;
-        RemeasureItem(I);
-      end;
-      UpdateScrollRange;
+      for I := 0 to Integer(FOriginalStates.Count) - 1 do
+        if TItemState(FOriginalStates[I]).HasChildren and
+           not TItemState(FOriginalStates[I]).Expanded then
+          TItemState(FOriginalStates[I]).Expanded := True;
+      RebuildVisibleMapping;
     end;
     RedrawWindow(Handle, nil, 0, RDW_INVALIDATE or RDW_ERASE or RDW_FRAME);
   end;
@@ -3157,15 +3193,19 @@ begin
     FShowRoot := Value;
     if not Value then
     begin
+      for I := 0 to Integer(FOriginalStates.Count) - 1 do
+        if (TItemState(FOriginalStates[I]).Level = 0) and
+           TItemState(FOriginalStates[I]).HasChildren and
+           not TItemState(FOriginalStates[I]).Expanded then
+          TItemState(FOriginalStates[I]).Expanded := True;
+      RebuildVisibleMapping;
+    end
+    else begin
+      FThreadsUpToDate := False;
       for I := 0 to Items.Count - 1 do
-        if (ItemLevel[I] = 0) and ItemStates[I].HasChildren and
-           not ItemStates[I].Expanded then
-          ItemStates[I].Expanded := True;
+        RemeasureItem(I);
+      UpdateScrollRange;
     end;
-    FThreadsUpToDate := False;
-    for I := 0 to Items.Count - 1 do
-      RemeasureItem(I);
-    UpdateScrollRange;
     RedrawWindow(Handle, nil, 0, RDW_INVALIDATE or RDW_ERASE or RDW_FRAME);
   end;
 end;
@@ -3175,8 +3215,8 @@ var
   I: Integer;
 begin
   FHasAnyChildren := False;
-  for I := 0 to Items.Count - 1 do
-    if ItemStates[I].HasChildren then
+  for I := 0 to Integer(FOriginalStates.Count) - 1 do
+    if TItemState(FOriginalStates[I]).HasChildren then
     begin
       FHasAnyChildren := True;
       Break;
@@ -3199,14 +3239,10 @@ procedure TNewCheckListBox.ExpandAll;
 var
   I: Integer;
 begin
-  for I := 0 to Items.Count - 1 do
-  begin
-    if ItemStates[I].HasChildren then
-      ItemStates[I].Expanded := True;
-    RemeasureItem(I);
-  end;
-  UpdateScrollRange;
-  Invalidate;
+  for I := 0 to Integer(FOriginalStates.Count) - 1 do
+    if TItemState(FOriginalStates[I]).HasChildren then
+      TItemState(FOriginalStates[I]).Expanded := True;
+  RebuildVisibleMapping;
 end;
 
 procedure TNewCheckListBox.CollapseAll;
@@ -3216,60 +3252,111 @@ begin
   if not FTreeViewStyle or FWantTabs then
     Exit;
 
-  for I := 0 to Items.Count - 1 do
-  begin
-    if ItemStates[I].HasChildren then
+  for I := 0 to Integer(FOriginalStates.Count) - 1 do
+    if TItemState(FOriginalStates[I]).HasChildren then
     begin
-      if not FShowRoot and (ItemLevel[I] = 0) then
+      if not FShowRoot and (TItemState(FOriginalStates[I]).Level = 0) then
         Continue;
-      ItemStates[I].Expanded := False;
+      TItemState(FOriginalStates[I]).Expanded := False;
     end;
-    RemeasureItem(I);
-  end;
-  UpdateScrollRange;
-  Invalidate;
+  RebuildVisibleMapping;
 end;
 
 procedure TNewCheckListBox.ExpandItem(Index: Integer);
 var
-  I, ParentLevel: Integer;
+  OriginalIndex: Integer;
 begin
-  if (Index >= 0) and (Index < Items.Count) and (ItemStates[Index].HasChildren) then
+  if (Index >= 0) and (Index < Items.Count) and ItemStates[Index].HasChildren then
   begin
-    ItemStates[Index].Expanded := True;
-    ParentLevel := ItemLevel[Index];
-    I := Index + 1;
-    while I < Items.Count do
+    OriginalIndex := FVisibleToOriginal[Index];
+    if not TItemState(FOriginalStates[OriginalIndex]).Expanded then
     begin
-      if ItemLevel[I] <= ParentLevel then Break;
-      RemeasureItem(I);
-      Inc(I);
+      TItemState(FOriginalStates[OriginalIndex]).Expanded := True;
+      RebuildVisibleMapping;
+      if Assigned(FOnExpandCollapse) then
+        FOnExpandCollapse(Self);
     end;
-    Invalidate;
-    if Assigned(FOnExpandCollapse) then
-      FOnExpandCollapse(Self);
   end;
 end;
 
 procedure TNewCheckListBox.CollapseItem(Index: Integer);
 var
-  I, ParentLevel: Integer;
+  OriginalIndex: Integer;
 begin
-  if (Index >= 0) and (Index < Items.Count) and (ItemStates[Index].HasChildren) then
+  if (Index >= 0) and (Index < Items.Count) and ItemStates[Index].HasChildren then
   begin
-    ItemStates[Index].Expanded := False;
-    ParentLevel := ItemLevel[Index];
-    I := Index + 1;
-    while I < Items.Count do
+    OriginalIndex := FVisibleToOriginal[Index];
+    if TItemState(FOriginalStates[OriginalIndex]).Expanded then
     begin
-      if ItemLevel[I] <= ParentLevel then Break;
-      RemeasureItem(I);
-      Inc(I);
+      TItemState(FOriginalStates[OriginalIndex]).Expanded := False;
+      RebuildVisibleMapping;
+      if Assigned(FOnExpandCollapse) then
+        FOnExpandCollapse(Self);
     end;
-    Invalidate;
-    if Assigned(FOnExpandCollapse) then
-      FOnExpandCollapse(Self);
   end;
+end;
+
+procedure TNewCheckListBox.RebuildVisibleMapping;
+var
+  I, SuppressLevel: Integer;
+  OState: TItemState;
+  SavedFocusOriginal, SavedTopOriginal: Integer;
+  NewFocusOriginal, NewTopOriginal: Integer;
+begin
+  if (ItemIndex >= 0) and (ItemIndex < FVisibleToOriginal.Count) then
+    SavedFocusOriginal := FVisibleToOriginal[ItemIndex]
+  else
+    SavedFocusOriginal := -1;
+  if (TopIndex >= 0) and (TopIndex < FVisibleToOriginal.Count) then
+    SavedTopOriginal := FVisibleToOriginal[TopIndex]
+  else
+    SavedTopOriginal := -1;
+
+  Inc(FDisableItemStateDeletion);
+  try
+    Items.BeginUpdate;
+    try
+      Items.Clear;
+      FVisibleToOriginal.Clear;
+      for I := 0 to Integer(FOriginalToVisible.Count) - 1 do
+        FOriginalToVisible[I] := -1;
+
+      SuppressLevel := -1;
+      for I := 0 to Integer(FOriginalStates.Count) - 1 do begin
+        OState := TItemState(FOriginalStates[I]);
+        if (SuppressLevel >= 0) and (OState.Level > SuppressLevel) then
+          Continue; { still inside a collapsed branch }
+        SuppressLevel := -1;
+        FVisibleToOriginal.Add(I);
+        FOriginalToVisible[I] := Integer(FVisibleToOriginal.Count) - 1;
+        Items.Add(OState.Caption);
+        if OState.HasChildren and not OState.Expanded then
+          SuppressLevel := OState.Level;
+      end;
+    finally
+      Items.EndUpdate;
+    end;
+  finally
+    Dec(FDisableItemStateDeletion);
+  end;
+
+  FThreadsUpToDate := False;
+  for I := 0 to Items.Count - 1 do
+    RemeasureItem(I);
+  UpdateScrollRange;
+
+  if SavedFocusOriginal >= 0 then begin
+    NewFocusOriginal := FindNearestVisibleOriginal(SavedFocusOriginal);
+    if NewFocusOriginal >= 0 then
+      ItemIndex := FOriginalToVisible[NewFocusOriginal];
+  end;
+  if SavedTopOriginal >= 0 then begin
+    NewTopOriginal := FindNearestVisibleOriginal(SavedTopOriginal);
+    if NewTopOriginal >= 0 then
+      TopIndex := FOriginalToVisible[NewTopOriginal];
+  end;
+
+  Invalidate;
 end;
 
 procedure TNewCheckListBox.DrawBackGround(ACanvas: TCanvas);

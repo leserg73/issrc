@@ -125,6 +125,17 @@ procedure TNewCheckListBoxOnExpandCollapse_W(Self: TNewCheckListBox; const T: TN
 procedure TNewCheckListBoxOnExpandCollapse_R(Self: TNewCheckListBox; var T: TNotifyEvent); begin T := Self.OnExpandCollapse; end;
 procedure TNewCheckListBoxOnItemMouseMove_W(Self: TNewCheckListBox; const T: TItemMouseMoveEvent); begin Self.OnItemMouseMove := T; end;
 procedure TNewCheckListBoxOnItemMouseMove_R(Self: TNewCheckListBox; var T: TItemMouseMoveEvent); begin T := Self.OnItemMouseMove; end;
+procedure TNewCheckListBoxOriginalItemSubItem_W(Self: TNewCheckListBox; const T: string; const t1: Integer); begin Self.OriginalItemSubItem[t1] := T; end;
+procedure TNewCheckListBoxOriginalItemSubItem_R(Self: TNewCheckListBox; var T: string; const t1: Integer); begin T := Self.OriginalItemSubItem[t1]; end;
+procedure TNewCheckListBoxOriginalExpanded_R(Self: TNewCheckListBox; var T: Boolean; const t1: Integer); begin T := Self.OriginalExpanded[t1]; end;
+procedure TNewCheckListBoxOriginalItemObject_W(Self: TNewCheckListBox; const T: TObject; const t1: Integer); begin Self.OriginalItemObject[t1] := T; end;
+procedure TNewCheckListBoxOriginalItemObject_R(Self: TNewCheckListBox; var T: TObject; const t1: Integer); begin T := Self.OriginalItemObject[t1]; end;
+procedure TNewCheckListBoxOriginalChecked_W(Self: TNewCheckListBox; const T: Boolean; const t1: Integer); begin Self.OriginalChecked[t1] := T; end;
+procedure TNewCheckListBoxOriginalChecked_R(Self: TNewCheckListBox; var T: Boolean; const t1: Integer); begin T := Self.OriginalChecked[t1]; end;
+procedure TNewCheckListBoxOriginalCaption_R(Self: TNewCheckListBox; var T: string; const t1: Integer); begin T := Self.OriginalCaption[t1]; end;
+procedure TNewCheckListBoxOriginalCount_R(Self: TNewCheckListBox; var T: Integer); begin T := Self.OriginalCount; end;
+procedure TNewCheckListBoxVisibleIndex_R(Self: TNewCheckListBox; var T: Integer; const t1: Integer); begin T := Self.VisibleIndex[t1]; end;
+procedure TNewCheckListBoxOriginalIndex_R(Self: TNewCheckListBox; var T: Integer; const t1: Integer); begin T := Self.OriginalIndex[t1]; end;
 
 procedure RegisterNewCheckListBox_R(Cl: TPSRuntimeClassImporter);
 begin
@@ -137,6 +148,7 @@ begin
     RegisterMethod(@TNewCheckListBox.AddGroupEx, 'AddGroupEx');
     RegisterMethod(@TNewCheckListBox.AddRadioButtonEx, 'AddRadioButtonEx');
     RegisterMethod(@TNewCheckListBox.CheckItem, 'CheckItem');
+    RegisterMethod(@TNewCheckListBox.CheckItemOriginal, 'CheckItemOriginal');
     RegisterMethod(@TNewCheckListBox.CollapseAll, 'CollapseAll');
     RegisterMethod(@TNewCheckListBox.CollapseItem, 'CollapseItem');
     RegisterMethod(@TNewCheckListBox.ExpandAll, 'ExpandAll');
@@ -168,6 +180,14 @@ begin
     RegisterPropertyHelper(@TNewCheckListBoxWallpaperStyle_R,@TNewCheckListBoxWallpaperStyle_W,'WallpaperStyle');
     RegisterPropertyHelper(@TNewCheckListBoxOnExpandCollapse_R,@TNewCheckListBoxOnExpandCollapse_W,'OnExpandCollapse');
     RegisterPropertyHelper(@TNewCheckListBoxOnItemMouseMove_R,@TNewCheckListBoxOnItemMouseMove_W,'OnItemMouseMove');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalIndex_R,nil,'OriginalIndex');
+    RegisterPropertyHelper(@TNewCheckListBoxVisibleIndex_R,nil,'VisibleIndex');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalCount_R,nil,'OriginalCount');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalCaption_R,nil,'OriginalCaption');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalChecked_R,@TNewCheckListBoxOriginalChecked_W,'OriginalChecked');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalItemObject_R,@TNewCheckListBoxOriginalItemObject_W,'OriginalItemObject');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalExpanded_R,nil,'OriginalExpanded');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalItemSubItem_R,@TNewCheckListBoxOriginalItemSubItem_W,'OriginalItemSubItem');
   end;
 end;
 

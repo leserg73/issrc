@@ -94,6 +94,7 @@ begin
     RegisterMethod('function AddGroupEx(const ACaption, ASubItem: String; ALevel: Byte; AExpanded: Boolean; AObject: TObject): Integer');
     RegisterMethod('function AddRadioButtonEx(const ACaption, ASubItem: String; ALevel: Byte; AChecked, AEnabled: Boolean; AExpanded: Boolean; AObject: TObject): Integer');
     RegisterMethod('function CheckItem(const Index: Integer; const AOperation: TCheckItemOperation): Boolean');
+    RegisterMethod('function CheckItemOriginal(const AnOriginalIndex: Integer; const AOperation: TCheckItemOperation): Boolean');
     RegisterMethod('procedure CollapseAll');
     RegisterMethod('procedure CollapseItem(Index: Integer)');
     RegisterMethod('procedure ExpandAll');
@@ -116,6 +117,14 @@ begin
     RegisterProperty('ItemFontStyle', 'TFontStyles Integer', iptrw);
     RegisterProperty('SubItemFontColor', 'TColor Integer', iptrw);
     RegisterProperty('SubItemFontStyle', 'TFontStyles Integer', iptrw);
+    RegisterProperty('OriginalIndex', 'Integer Integer', iptr);
+    RegisterProperty('VisibleIndex', 'Integer Integer', iptr);
+    RegisterProperty('OriginalCount', 'Integer', iptr);
+    RegisterProperty('OriginalCaption', 'string Integer', iptr);
+    RegisterProperty('OriginalChecked', 'Boolean Integer', iptrw);
+    RegisterProperty('OriginalItemObject', 'TObject Integer', iptrw);
+    RegisterProperty('OriginalExpanded', 'Boolean Integer', iptr);
+    RegisterProperty('OriginalItemSubItem', 'String Integer', iptrw);
     RegisterProperty('Flat', 'Boolean', iptrw);
     RegisterProperty('MinItemHeight', 'Integer', iptrw);
     RegisterProperty('Offset', 'Integer', iptrw);

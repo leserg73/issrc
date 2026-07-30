@@ -544,23 +544,23 @@ end;
 
 procedure TWizardForm.UpdateComponentSizesEnum(Index: Integer; HasChildren: Boolean; Ext: NativeInt);
 begin
-  const ComponentEntry = PSetupComponentEntry(ComponentsList.ItemObject[Index]);
+  const ComponentEntry = PSetupComponentEntry(ComponentsList.OriginalItemObject[Index]);
 
   var ChildrenSize: Int64 := 0;
   if HasChildren then
     ComponentsList.EnumChildrenOf(Index, UpdateComponentSizesEnum, NativeInt(@ChildrenSize));
   var ComponentSize := ComponentEntry.Size;
   Inc(ComponentSize, ChildrenSize);
-  if ComponentsList.Checked[Index] then
+  if ComponentsList.OriginalChecked[Index] then
     Inc(Int64(Pointer(Ext)^), ComponentSize);
 
   if ComponentSize <> 0 then begin
     if not HasLargeComponents then
-      ComponentsList.ItemSubItem[Index] := FmtSetupMessage1(msgComponentSize1, IntToKBStr(ComponentSize))
+      ComponentsList.OriginalItemSubItem[Index] := FmtSetupMessage1(msgComponentSize1, IntToKBStr(ComponentSize))
     else
-      ComponentsList.ItemSubItem[Index] := FmtSetupMessage1(msgComponentSize2, IntToMBStr(ComponentSize));
+      ComponentsList.OriginalItemSubItem[Index] := FmtSetupMessage1(msgComponentSize2, IntToMBStr(ComponentSize));
   end else
-    ComponentsList.ItemSubItem[Index] := '';
+    ComponentsList.OriginalItemSubItem[Index] := '';
 end;
 
 procedure TWizardForm.UpdateComponentSizes();
@@ -1572,22 +1572,22 @@ begin
     if not (KeepFixedComponents and (coFixed in ComponentEntry.Options)) then begin
       if SelectComponents <> nil then begin
         if ListContains(SelectComponents, '*' + ComponentEntry.Name) then begin
-          ComponentsList.CheckItem(Integer(I), coCheckWithChildren);
+          ComponentsList.CheckItemOriginal(Integer(I), coCheckWithChildren);
           Continue;
         end;
         if ListContains(SelectComponents, ComponentEntry.Name) then begin
-          ComponentsList.Checked[Integer(I)] := True;
+          ComponentsList.OriginalChecked[Integer(I)] := True;
           Continue;
         end;
         if ListContains(SelectComponents, '!' + ComponentEntry.Name) then begin
-          ComponentsList.Checked[Integer(I)] := False;
+          ComponentsList.OriginalChecked[Integer(I)] := False;
           Continue;
         end;
       end;
 
       if DeselectComponents <> nil then begin
         if ListContains(DeselectComponents, ComponentEntry.Name) then
-          ComponentsList.Checked[Integer(I)] := False;
+          ComponentsList.OriginalChecked[Integer(I)] := False;
       end;
     end;
   end;
@@ -1642,7 +1642,7 @@ begin
     ComponentEntry := PSetupComponentEntry(Entries[seComponent][I]);
     if not OnlySelectFixedComponents or (coFixed in ComponentEntry.Options) then begin
       SetStringsFromCommaString(ComponentTypes, ComponentEntry.Types);
-      ComponentsList.Checked[Integer(I)] := ListContains(ComponentTypes, TypeName);
+      ComponentsList.OriginalChecked[Integer(I)] := ListContains(ComponentTypes, TypeName);
     end;
   end;
   ComponentTypes.Free();
@@ -1678,9 +1678,9 @@ var
   I: Integer;
 begin
   Components.Clear();
-  for I := 0 to ComponentsList.Items.Count-1 do begin
-    if ComponentsList.Checked[I] then begin
-      ComponentEntry := PSetupComponentEntry(ComponentsList.ItemObject[I]);
+  for I := 0 to ComponentsList.OriginalCount-1 do begin
+    if ComponentsList.OriginalChecked[I] then begin
+      ComponentEntry := PSetupComponentEntry(ComponentsList.OriginalItemObject[I]);
       Components.Add(GetString(ComponentEntry, Descriptions));
     end;
   end;
@@ -1740,9 +1740,9 @@ begin
   SelectedComponents.Clear;
   if DeselectedComponents <> nil then
     DeselectedComponents.Clear;
-  for I := 0 to ComponentsList.Items.Count-1 do begin
-    ComponentEntry := PSetupComponentEntry(ComponentsList.ItemObject[I]);
-    if ComponentsList.Checked[I] then
+  for I := 0 to ComponentsList.OriginalCount-1 do begin
+    ComponentEntry := PSetupComponentEntry(ComponentsList.OriginalItemObject[I]);
+    if ComponentsList.OriginalChecked[I] then
       SelectedComponents.Add(ComponentEntry.Name)
     else if DeselectedComponents <> nil then
       DeselectedComponents.Add(ComponentEntry.Name);
@@ -2501,9 +2501,9 @@ procedure TWizardForm.NextButtonClick(Sender: TObject);
       //now see if there are unchecked components that are already installed
       if PrevSelectedComponents.Count > 0 then begin
         S := '';
-        for I := 0 to ComponentsList.Items.Count-1 do begin
-          if not ComponentsList.Checked[I] then begin
-            ComponentEntry := PSetupComponentEntry(ComponentsList.ItemObject[I]);
+        for I := 0 to ComponentsList.OriginalCount-1 do begin
+          if not ComponentsList.OriginalChecked[I] then begin
+            ComponentEntry := PSetupComponentEntry(ComponentsList.OriginalItemObject[I]);
             if not (coDisableNoUninstallWarning in ComponentEntry.Options) then begin
               if ListContains(PrevSelectedComponents, ComponentEntry.Name) then begin
                 if S <> '' then
