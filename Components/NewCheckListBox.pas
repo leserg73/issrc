@@ -1213,11 +1213,11 @@ const
     (CBS_MIXEDNORMAL, CBS_MIXEDHOT, CBS_MIXEDPRESSED, CBS_MIXEDDISABLED)
   );
   CheckListItemStates: array[Boolean] of TThemedCheckListBox = (tclListItemDisabled, tclListItemNormal);
-  CheckBoxCheckedStates: array[Boolean] of TThemedButton = (tbCheckBoxCheckedDisabled, tbCheckBoxCheckedNormal);
-  CheckBoxUncheckedStates: array[Boolean] of TThemedButton = (tbCheckBoxUncheckedDisabled, tbCheckBoxUncheckedNormal);
-  CheckBoxMixedStates: array[Boolean] of TThemedButton = (tbCheckBoxMixedDisabled, tbCheckBoxMixedNormal);
-  RadioButtonCheckedStates: array[Boolean] of TThemedButton = (tbRadioButtonCheckedDisabled, tbRadioButtonCheckedNormal);
-  RadioButtonUncheckedStates: array[Boolean] of TThemedButton = (tbRadioButtonUncheckedDisabled, tbRadioButtonUncheckedNormal);
+  CheckBoxCheckedStates: array[0..3] of TThemedButton = (tbCheckBoxCheckedDisabled, tbCheckBoxCheckedNormal, tbCheckBoxCheckedHot, tbCheckBoxCheckedPressed);
+  CheckBoxUncheckedStates: array[0..3] of TThemedButton = (tbCheckBoxUncheckedDisabled, tbCheckBoxUncheckedNormal, tbCheckBoxUncheckedHot, tbCheckBoxUncheckedPressed);
+  CheckBoxMixedStates: array[0..3] of TThemedButton = (tbCheckBoxMixedDisabled, tbCheckBoxMixedNormal, tbCheckBoxMixedHot, tbCheckBoxMixedPressed);
+  RadioButtonCheckedStates: array[0..3] of TThemedButton = (tbRadioButtonCheckedDisabled, tbRadioButtonCheckedNormal, tbRadioButtonCheckedHot, tbRadioButtonCheckedPressed);
+  RadioButtonUncheckedStates: array[0..3] of TThemedButton = (tbRadioButtonUncheckedDisabled, tbRadioButtonUncheckedNormal, tbRadioButtonUncheckedHot, tbRadioButtonUncheckedPressed);
 var
   SavedClientRect: TRect;
   LStyle: TCustomStyleServices;
@@ -1601,22 +1601,31 @@ begin
 
         DrawCustomGlyph(Canvas, AdjustedCheckRect, ImageIndex, FGlyphsTransparentColor);
     end
-    else if (LStyle <> nil) and not FDisableStyledButtons then begin
+    else if (LStyle <> nil) and not LStyle.IsSystemStyle and not FDisableStyledButtons then begin
         var Detail: TThemedButton;
+        var StateIndex: Integer;
+        if ItemDisabled then
+          StateIndex := 0  // Disabled
+        else if (FCaptureIndex = Index) and (FSpaceDown or (FLastMouseMoveIndex = Index)) then
+          StateIndex := 3  // Pressed
+        else if (FCaptureIndex < 0) and (Index = FHotIndex) then
+          StateIndex := 2  // Hot
+        else
+          StateIndex := 1; // Normal
         if ItemState.State <> cbGrayed then begin
           if ItemState.ItemType = itCheck then begin
             if ItemState.State = cbChecked then
-              Detail := CheckBoxCheckedStates[not ItemDisabled]
+              Detail := CheckBoxCheckedStates[StateIndex]
             else
-              Detail := CheckBoxUncheckedStates[not ItemDisabled];
+              Detail := CheckBoxUncheckedStates[StateIndex];
           end else begin
             if ItemState.State = cbChecked then
-              Detail := RadioButtonCheckedStates[not ItemDisabled]
+              Detail := RadioButtonCheckedStates[StateIndex]
             else
-              Detail := RadioButtonUncheckedStates[not ItemDisabled];
+              Detail := RadioButtonUncheckedStates[StateIndex];
           end;
         end else
-          Detail := CheckBoxMixedStates[not ItemDisabled];
+          Detail := CheckBoxMixedStates[StateIndex];
         const ElementDetails = LStyle.GetElementDetails(Detail);
         const SaveColor = Brush.Color;
         const SaveIndex = SaveDC(Handle);
