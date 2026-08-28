@@ -130,6 +130,10 @@ begin
     RegisterProperty('OriginalItemSubItem', 'string Integer', iptrw);
     RegisterProperty('OriginalItemEnabled', 'Boolean Integer', iptrw);
     RegisterProperty('OriginalState', 'TCheckBoxState Integer', iptr);
+    RegisterProperty('OriginalItemFontColor', 'TColor Integer', iptrw);
+    RegisterProperty('OriginalItemFontStyle', 'TFontStyles Integer', iptrw);
+    RegisterProperty('OriginalSubItemFontColor', 'TColor Integer', iptrw);
+    RegisterProperty('OriginalSubItemFontStyle', 'TFontStyles Integer', iptrw);
     RegisterProperty('Flat', 'Boolean', iptrw);
     RegisterProperty('MinItemHeight', 'Integer', iptrw);
     RegisterProperty('Offset', 'Integer', iptrw);

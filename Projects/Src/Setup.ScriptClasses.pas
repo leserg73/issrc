@@ -118,6 +118,14 @@ procedure TNewCheckListBoxOriginalItemSubItem_W(Self: TNewCheckListBox; const T:
 procedure TNewCheckListBoxOriginalItemEnabled_R(Self: TNewCheckListBox; var T: Boolean; const t1: Integer); begin T := Self.OriginalItemEnabled[t1]; end;
 procedure TNewCheckListBoxOriginalItemEnabled_W(Self: TNewCheckListBox; const T: Boolean; const t1: Integer); begin Self.OriginalItemEnabled[t1] := T; end;
 procedure TNewCheckListBoxOriginalState_R(Self: TNewCheckListBox; var T: TCheckBoxState; const t1: Integer); begin T := Self.OriginalState[t1]; end;
+procedure TNewCheckListBoxOriginalItemFontColor_R(Self: TNewCheckListBox; var T: TColor; const t1: Integer); begin T := Self.OriginalItemFontColor[t1]; end;
+procedure TNewCheckListBoxOriginalItemFontColor_W(Self: TNewCheckListBox; const T: TColor; const t1: Integer); begin Self.OriginalItemFontColor[t1] := T; end;
+procedure TNewCheckListBoxOriginalItemFontStyle_R(Self: TNewCheckListBox; var T: TFontStyles; const t1: Integer); begin T := Self.OriginalItemFontStyle[t1]; end;
+procedure TNewCheckListBoxOriginalItemFontStyle_W(Self: TNewCheckListBox; const T: TFontStyles; const t1: Integer); begin Self.OriginalItemFontStyle[t1] := T; end;
+procedure TNewCheckListBoxOriginalSubItemFontColor_R(Self: TNewCheckListBox; var T: TColor; const t1: Integer); begin T := Self.OriginalSubItemFontColor[t1]; end;
+procedure TNewCheckListBoxOriginalSubItemFontColor_W(Self: TNewCheckListBox; const T: TColor; const t1: Integer); begin Self.OriginalSubItemFontColor[t1] := T; end;
+procedure TNewCheckListBoxOriginalSubItemFontStyle_R(Self: TNewCheckListBox; var T: TFontStyles; const t1: Integer); begin T := Self.OriginalSubItemFontStyle[t1]; end;
+procedure TNewCheckListBoxOriginalSubItemFontStyle_W(Self: TNewCheckListBox; const T: TFontStyles; const t1: Integer); begin Self.OriginalSubItemFontStyle[t1] := T; end;
 procedure TNewCheckListBoxShowRoot_W(Self: TNewCheckListBox; const T: Boolean); begin Self.ShowRoot := T; end;
 procedure TNewCheckListBoxShowRoot_R(Self: TNewCheckListBox; var T: Boolean); begin T := Self.ShowRoot; end;
 procedure TNewCheckListBoxSelectedItemAlpha_W(Self: TNewCheckListBox; const T: Byte); begin Self.SelectedItemAlpha := T; end;
@@ -186,6 +194,10 @@ begin
     RegisterPropertyHelper(@TNewCheckListBoxOriginalItemSubItem_R,@TNewCheckListBoxOriginalItemSubItem_W,'OriginalItemSubItem');
     RegisterPropertyHelper(@TNewCheckListBoxOriginalItemEnabled_R,@TNewCheckListBoxOriginalItemEnabled_W,'OriginalItemEnabled');
     RegisterPropertyHelper(@TNewCheckListBoxOriginalState_R,nil,'OriginalState');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalItemFontColor_R, @TNewCheckListBoxOriginalItemFontColor_W, 'OriginalItemFontColor');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalItemFontStyle_R, @TNewCheckListBoxOriginalItemFontStyle_W, 'OriginalItemFontStyle');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalSubItemFontColor_R, @TNewCheckListBoxOriginalSubItemFontColor_W, 'OriginalSubItemFontColor');
+    RegisterPropertyHelper(@TNewCheckListBoxOriginalSubItemFontStyle_R, @TNewCheckListBoxOriginalSubItemFontStyle_W, 'OriginalSubItemFontStyle');
     RegisterPropertyHelper(@TNewCheckListBoxShowRoot_R,@TNewCheckListBoxShowRoot_W,'ShowRoot');
     RegisterPropertyHelper(@TNewCheckListBoxSelectedItemAlpha_R,@TNewCheckListBoxSelectedItemAlpha_W,'SelectedItemAlpha');
     RegisterPropertyHelper(@TNewCheckListBoxTreeViewStyle_R,@TNewCheckListBoxTreeViewStyle_W,'TreeViewStyle');

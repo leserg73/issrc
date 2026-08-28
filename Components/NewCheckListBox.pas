@@ -175,6 +175,14 @@ type
     function GetOriginalItemEnabled(AnOriginalIndex: Integer): Boolean;
     procedure SetOriginalItemEnabled(AnOriginalIndex: Integer; const AEnabled: Boolean);
     function GetOriginalState(AnOriginalIndex: Integer): TCheckBoxState;
+    function GetOriginalItemFontColor(AnOriginalIndex: Integer): TColor;
+    procedure SetOriginalItemFontColor(AnOriginalIndex: Integer; const Value: TColor);
+    function GetOriginalItemFontStyle(AnOriginalIndex: Integer): TFontStyles;
+    procedure SetOriginalItemFontStyle(AnOriginalIndex: Integer; const Value: TFontStyles);
+    function GetOriginalSubItemFontColor(AnOriginalIndex: Integer): TColor;
+    procedure SetOriginalSubItemFontColor(AnOriginalIndex: Integer; const Value: TColor);
+    function GetOriginalSubItemFontStyle(AnOriginalIndex: Integer): TFontStyles;
+    procedure SetOriginalSubItemFontStyle(AnOriginalIndex: Integer; const Value: TFontStyles);
     procedure LBDeleteString(var Message: TMessage); message LB_DELETESTRING;
     procedure LBResetContent(var Message: TMessage); message LB_RESETCONTENT;
     procedure WMEraseBkgnd(var Message: TWMEraseBkgnd); message WM_ERASEBKGND;
@@ -313,6 +321,10 @@ type
     property OriginalItemSubItem[AnOriginalIndex: Integer]: string read GetOriginalSubItem write SetOriginalSubItem;
     property OriginalItemEnabled[AnOriginalIndex: Integer]: Boolean read GetOriginalItemEnabled write SetOriginalItemEnabled;
     property OriginalState[AnOriginalIndex: Integer]: TCheckBoxState read GetOriginalState;
+    property OriginalItemFontColor[AnOriginalIndex: Integer]: TColor read GetOriginalItemFontColor write SetOriginalItemFontColor;
+    property OriginalItemFontStyle[AnOriginalIndex: Integer]: TFontStyles read GetOriginalItemFontStyle write SetOriginalItemFontStyle;
+    property OriginalSubItemFontColor[AnOriginalIndex: Integer]: TColor read GetOriginalSubItemFontColor write SetOriginalSubItemFontColor;
+    property OriginalSubItemFontStyle[AnOriginalIndex: Integer]: TFontStyles read GetOriginalSubItemFontStyle write SetOriginalSubItemFontStyle;
     class property ComplexParentBackground: Boolean read FComplexParentBackground write FComplexParentBackground;
   published
     property Align;
@@ -2237,6 +2249,74 @@ end;
 function TNewCheckListBox.GetOriginalState(AnOriginalIndex: Integer): TCheckBoxState;
 begin
   Result := TItemState(FOriginalStates[AnOriginalIndex]).State;
+end;
+
+function TNewCheckListBox.GetOriginalItemFontColor(AnOriginalIndex: Integer): TColor;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).ItemFontColor;
+end;
+
+procedure TNewCheckListBox.SetOriginalItemFontColor(AnOriginalIndex: Integer; const Value: TColor);
+var
+  VisIndex: Integer;
+begin
+  if TItemState(FOriginalStates[AnOriginalIndex]).ItemFontColor <> Value then begin
+    TItemState(FOriginalStates[AnOriginalIndex]).ItemFontColor := Value;
+    VisIndex := FOriginalToVisible[AnOriginalIndex];
+    if VisIndex >= 0 then
+      RemeasureItemAndUpdate(VisIndex);
+  end;
+end;
+
+function TNewCheckListBox.GetOriginalItemFontStyle(AnOriginalIndex: Integer): TFontStyles;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).ItemFontStyle;
+end;
+
+procedure TNewCheckListBox.SetOriginalItemFontStyle(AnOriginalIndex: Integer; const Value: TFontStyles);
+var
+  VisIndex: Integer;
+begin
+  if TItemState(FOriginalStates[AnOriginalIndex]).ItemFontStyle <> Value then begin
+    TItemState(FOriginalStates[AnOriginalIndex]).ItemFontStyle := Value;
+    VisIndex := FOriginalToVisible[AnOriginalIndex];
+    if VisIndex >= 0 then
+      RemeasureItemAndUpdate(VisIndex);
+  end;
+end;
+
+function TNewCheckListBox.GetOriginalSubItemFontColor(AnOriginalIndex: Integer): TColor;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).SubItemFontColor;
+end;
+
+procedure TNewCheckListBox.SetOriginalSubItemFontColor(AnOriginalIndex: Integer; const Value: TColor);
+var
+  VisIndex: Integer;
+begin
+  if TItemState(FOriginalStates[AnOriginalIndex]).SubItemFontColor <> Value then begin
+    TItemState(FOriginalStates[AnOriginalIndex]).SubItemFontColor := Value;
+    VisIndex := FOriginalToVisible[AnOriginalIndex];
+    if VisIndex >= 0 then
+      RemeasureItemAndUpdate(VisIndex);
+  end;
+end;
+
+function TNewCheckListBox.GetOriginalSubItemFontStyle(AnOriginalIndex: Integer): TFontStyles;
+begin
+  Result := TItemState(FOriginalStates[AnOriginalIndex]).SubItemFontStyle;
+end;
+
+procedure TNewCheckListBox.SetOriginalSubItemFontStyle(AnOriginalIndex: Integer; const Value: TFontStyles);
+var
+  VisIndex: Integer;
+begin
+  if TItemState(FOriginalStates[AnOriginalIndex]).SubItemFontStyle <> Value then begin
+    TItemState(FOriginalStates[AnOriginalIndex]).SubItemFontStyle := Value;
+    VisIndex := FOriginalToVisible[AnOriginalIndex];
+    if VisIndex >= 0 then
+      RemeasureItemAndUpdate(VisIndex);
+  end;
 end;
 
 function TNewCheckListBox.GetState(Index: Integer): TCheckBoxState;
